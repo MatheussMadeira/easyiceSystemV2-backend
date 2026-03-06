@@ -55,7 +55,7 @@ class OSService {
       const novaOSData = {
         ...dados,
         numeroOS: proximoEsperado,
-        arquivoAbertura: arquivos?.arquivoAbertura?.[0]?.filename || null,
+        arquivoAbertura: arquivos?.arquivoAbertura?.[0]?.path || null,
         situacao: "EM ABERTO",
         dataAbertura: new Date(),
       };
@@ -66,7 +66,7 @@ class OSService {
       throw error;
     }
   }
-  async update(id, dadosFechamento, arquivo) {
+  async update(id, dadosFechamento, arquivos) {
     try {
       const osParaFechar = await OrdemServico.findById(id);
 
@@ -82,14 +82,13 @@ class OSService {
         pecasUtilizadas: dadosFechamento.pecasUtilizadas,
         descricaoFechamento: dadosFechamento.descricaoFechamento,
         valorPecas: Number(dadosFechamento.valorPecas) || 0,
-
         executor: dadosFechamento.executor,
       };
 
-      if (arquivo) {
-        camposParaAtualizar.arquivoFechamento = arquivo.filename;
+      if (arquivos?.arquivoFechamento?.[0]?.path) {
+        camposParaAtualizar.arquivoFechamento =
+          arquivos.arquivoFechamento[0].path;
       }
-
       return await OrdemServico.findByIdAndUpdate(id, camposParaAtualizar, {
         new: true,
       });

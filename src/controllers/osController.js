@@ -6,6 +6,7 @@ class OSController {
       const novaOS = await osService.create(req.body, req.files);
       return res.status(201).json(novaOS);
     } catch (error) {
+      console.log("DETALHE DO ERRO NO CONTROLLER:", error.message);
       return res.status(400).json({ erro: error.message });
     }
   }
@@ -21,7 +22,7 @@ class OSController {
   async updateInline(req, res) {
     try {
       const { id } = req.params;
-      const dados = req.body; 
+      const dados = req.body;
 
       const resultado = await osService.updateGeneric(id, dados);
 
@@ -41,14 +42,10 @@ class OSController {
 
   async update(req, res) {
     try {
-      const arquivoFinal = req.files["arquivoFechamento"]
-        ? req.files["arquivoFechamento"][0]
-        : null;
-
       const osAtualizada = await osService.update(
         req.params.id,
         req.body,
-        arquivoFinal
+        req.files
       );
       return res.json(osAtualizada);
     } catch (error) {
