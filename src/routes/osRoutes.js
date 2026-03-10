@@ -1,22 +1,55 @@
 const express = require("express");
-const router = express.Router();
+const osRoutes = express.Router();
 const osController = require("../controllers/osController");
 const upload = require("../config/multer");
+const permitir = require("../auth/authMiddleware");
 
 const uploadFields = upload.fields([
   { name: "arquivoAbertura", maxCount: 1 },
   { name: "arquivoFechamento", maxCount: 1 },
 ]);
 
-router.post("/", uploadFields, (req, res) => osController.create(req, res));
-router.get("/", (req, res) => osController.read(req, res));
-router.get("/opcoes", (req, res) => osController.getOptions(req, res));
-router.get("/proximo-numero", (req, res) => osController.getNext(req, res));
-router.patch("/:id/inline", osController.updateInline);
-router.get("/:id", (req, res) => osController.findById(req, res));
+osRoutes.post(
+  "/",
+  permitir(["SOLICITANTE", "ADMIN"]),
+  uploadFields,
+  osController.create
+);
 
-router.put("/:id", uploadFields, (req, res) => osController.update(req, res));
+osRoutes.get(
+  "/",
+  permitir(["SOLICITANTE", "EXECUTOR", "ADMIN"]),
+  osController.read
+);
+osRoutes.get(
+  "/opcoes",
+  permitir(["SOLICITANTE", "EXECUTOR", "ADMIN"]),
+  osController.getOptions
+);
+osRoutes.get(
+  "/proximo-numero",
+  permitir(["SOLICITANTE", "EXECUTOR", "ADMIN"]),
+  osController.getNext
+);
+osRoutes.get(
+  "/:id",
+  permitir(["SOLICITANTE", "EXECUTOR", "ADMIN"]),
+  osController.findById
+);
 
-router.delete("/:id", (req, res) => osController.delete(req, res));
+osRoutes.patch(
+  "/:id/inline",
+  permitir(["SOLICITANTE", "ADMIN"]),
+  osController.updateInline
+);
 
-module.exports = router;
+osRoutes.put(
+  "/:id",
+  permitir(["SOLICITANTE", "EXECUTOR", "ADMIN"]),
+  uploadFields,
+  osController.update
+);
+
+osRoutes.delete("/:id", permitir(["ADMIN"]), osController.delete);
+
+module.exports = osRoutes;

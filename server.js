@@ -3,7 +3,8 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const path = require("path");
-const osRoutes = require("./src/routes/osRoutes");
+
+const routes = require("./src/routes/index");
 
 const app = express();
 
@@ -17,7 +18,8 @@ mongoose
   .then(() => console.log("✅ Banco EasyIce Conectado!"))
   .catch((err) => console.error("❌ Erro no Banco:", err));
 
-app.use("/api/os", osRoutes);
+
+app.use("/api", routes);
 
 const PORT = 3001;
 app.listen(PORT, () => {

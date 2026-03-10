@@ -1,57 +1,51 @@
 const OrdemServico = require("../models/OrdemServico");
+const User = require("../models/User");
+const { Setor, Prioridade } = require("../models/GenericName");
 
 class OSService {
+  // Busca o próximo número baseado na última OS (Garante sequência a partir da 1270)
   async getNextNumber() {
     try {
       const ultimaOS = await OrdemServico.findOne({}, { numeroOS: 1 })
         .sort({ numeroOS: -1 })
         .collation({ locale: "en_US", numericOrdering: true });
 
-      if (!ultimaOS || !ultimaOS.numeroOS) {
-        return 1000;
-      }
-
-      const numeroAtual = Number(ultimaOS.numeroOS);
-
-      return numeroAtual + 1;
+      if (!ultimaOS || !ultimaOS.numeroOS) return 1000;
+      return Number(ultimaOS.numeroOS) + 1;
     } catch (error) {
       console.error("Erro ao buscar próximo número:", error);
       return 1000;
     }
   }
-  async updateGeneric(id, dados) {
-    try {
-      const osAtualizada = await OrdemServico.findByIdAndUpdate(
-        id,
-        { $set: dados },
-        { returnDocument: "after", runValidators: true }
-      );
 
-      if (!osAtualizada) {
-        throw new Error("Ordem de Serviço não encontrada.");
-      }
-
-      return osAtualizada;
-    } catch (error) {
-      console.error("Erro no updateGeneric:", error);
-      throw error;
-    }
-  }
+  // CRIAÇÃO: Validação Híbrida (Mestre + Histórico)
   async create(dados, arquivos) {
     try {
       const proximoEsperado = await this.getNextNumber();
 
-      const [setores, solicitantes, prioridades] = await Promise.all([
-        OrdemServico.distinct("setor"),
-        OrdemServico.distinct("solicitante"),
-        OrdemServico.distinct("prioridade"),
+      // Checa se o que foi enviado existe no Mestre OU no Histórico das OSs
+      const [
+        setorMestre,
+        setorHist,
+        solicitanteMestre,
+        solicitanteHist,
+        prioridadeMestre,
+        prioridadeHist,
+      ] = await Promise.all([
+        Setor.findOne({ nome: dados.setor }),
+        OrdemServico.findOne({ setor: dados.setor }),
+        User.findOne({ nome: dados.solicitante }),
+        OrdemServico.findOne({ solicitante: dados.solicitante }),
+        Prioridade.findOne({ nome: dados.prioridade }),
+        OrdemServico.findOne({ prioridade: dados.prioridade }),
       ]);
 
-      if (!setores.includes(dados.setor)) throw new Error(`Setor inválido.`);
-      if (!solicitantes.includes(dados.solicitante))
+      if (!setorMestre && !setorHist) throw new Error(`Setor inválido.`);
+      if (!solicitanteMestre && !solicitanteHist)
         throw new Error(`Solicitante inválido.`);
-      if (!prioridades.includes(dados.prioridade))
+      if (!prioridadeMestre && !prioridadeHist)
         throw new Error(`Prioridade inválida.`);
+
       const novaOSData = {
         ...dados,
         numeroOS: proximoEsperado,
@@ -63,87 +57,123 @@ class OSService {
       const novaOS = new OrdemServico(novaOSData);
       return await novaOS.save();
     } catch (error) {
+      console.error("Erro no Create Service:", error.message);
       throw error;
     }
   }
-  async update(id, dadosFechamento, arquivos) {
+
+  async getOptions() {
     try {
-      const osParaFechar = await OrdemServico.findById(id);
+      console.log("--- BUSCANDO OPÇÕES DIRETAS DO BANCO ---");
 
-      if (!osParaFechar) throw new Error("OS não encontrada.");
+      // Buscamos apenas nas coleções de referência (Mestre)
+      // O uso de $in permite que um usuário ADMIN também apareça em ambas as listas se necessário
+      const [sDocs, solDocs, exeDocs, priDocs] = await Promise.all([
+        Setor.find({}, "nome").sort({ nome: 1 }),
+        User.find(
+          {
+            funcoes: { $in: ["SOLICITANTE", "ADMIN"] },
+            ativo: true,
+          },
+          "nome"
+        ).sort({ nome: 1 }),
+        User.find(
+          {
+            funcoes: { $in: ["EXECUTOR", "ADMIN"] },
+            ativo: true,
+          },
+          "nome"
+        ).sort({ nome: 1 }),
+        Prioridade.find({}, "nome").sort({ nome: 1 }),
+      ]);
 
-      if (osParaFechar.situacao === "CONCLUÍDO") {
+      console.log("Docs encontrados no banco:", {
+        setores: sDocs.length,
+        solicitantes: solDocs.length,
+        executores: exeDocs.length,
+      });
+
+      // Mapeamos apenas os nomes das coleções oficiais
+      // Usamos .toUpperCase() para garantir o padrão visual novo
+      return {
+        setores: sDocs.map((d) => d.nome.toUpperCase()),
+        solicitantes: solDocs.map((d) => d.nome.toUpperCase()),
+        executores: exeDocs.map((d) => d.nome.toUpperCase()),
+        prioridades: priDocs.map((d) => d.nome.toUpperCase()),
+        situacoes: ["EM ABERTO", "EM PROCESSO", "CONCLUÍDO", "CANCELADA"],
+      };
+    } catch (error) {
+      console.error("Erro no getOptions Service:", error);
+      throw error;
+    }
+  }
+
+  async update(id, dados, arquivos) {
+    try {
+      const osParaAtualizar = await OrdemServico.findById(id);
+      if (!osParaAtualizar) throw new Error("OS não encontrada.");
+
+      if (osParaAtualizar.situacao === "CONCLUÍDO") {
         throw new Error("Esta Ordem de Serviço já se encontra CONCLUÍDA.");
       }
 
-      const camposParaAtualizar = {
-        situacao: "CONCLUÍDO",
-        dataFechamento: new Date(),
-        pecasUtilizadas: dadosFechamento.pecasUtilizadas,
-        descricaoFechamento: dadosFechamento.descricaoFechamento,
-        valorPecas: Number(dadosFechamento.valorPecas) || 0,
-        executor: dadosFechamento.executor,
+      let camposParaAtualizar = {
+        situacao: dados.situacao,
+        executor: dados.executor,
       };
 
-      if (arquivos?.arquivoFechamento?.[0]?.path) {
-        camposParaAtualizar.arquivoFechamento =
-          arquivos.arquivoFechamento[0].path;
+      if (dados.situacao === "EM PROCESSO") {
+        camposParaAtualizar.descricaoProcesso = dados.descricaoProcesso;
+        camposParaAtualizar.dataFechamento = null;
+      } else if (dados.situacao === "CONCLUÍDO") {
+        camposParaAtualizar = {
+          ...camposParaAtualizar,
+          dataFechamento: new Date(),
+          pecasUtilizadas: dados.pecasUtilizadas || "Nenhuma",
+          descricaoFechamento: dados.descricaoFechamento,
+          valorPecas: Number(dados.valorPecas) || 0,
+        };
+
+        if (arquivos?.arquivoFechamento?.[0]?.path) {
+          camposParaAtualizar.arquivoFechamento =
+            arquivos.arquivoFechamento[0].path;
+        }
       }
-      return await OrdemServico.findByIdAndUpdate(id, camposParaAtualizar, {
-        new: true,
-      });
+
+      return await OrdemServico.findByIdAndUpdate(
+        id,
+        { $set: camposParaAtualizar },
+        { new: true, runValidators: true }
+      );
     } catch (error) {
+      console.error("Erro no Update Service:", error.message);
       throw error;
     }
   }
+
+  // Métodos de leitura e deleção (Simples)
   async read() {
-    try {
-      return await OrdemServico.find().sort({ dataAbertura: -1 });
-    } catch (error) {
-      throw error;
-    }
+    return await OrdemServico.find().sort({ dataAbertura: -1 });
   }
 
   async findById(id) {
-    try {
-      const os = await OrdemServico.findById(id);
-      if (!os) throw new Error("Ordem de Serviço não encontrada.");
-      return os;
-    } catch (error) {
-      throw error;
-    }
+    const os = await OrdemServico.findById(id);
+    if (!os) throw new Error("Ordem de Serviço não encontrada.");
+    return os;
   }
 
   async delete(id) {
-    try {
-      const deletada = await OrdemServico.findByIdAndDelete(id);
-      if (!deletada) throw new Error("OS não encontrada");
-      return deletada;
-    } catch (error) {
-      throw error;
-    }
+    const deletada = await OrdemServico.findByIdAndDelete(id);
+    if (!deletada) throw new Error("OS não encontrada");
+    return deletada;
   }
-  async getOptions() {
-    try {
-      const [setores, solicitantes, executores, prioridades, situacoes] =
-        await Promise.all([
-          OrdemServico.distinct("setor"),
-          OrdemServico.distinct("solicitante"),
-          OrdemServico.distinct("executor"),
-          OrdemServico.distinct("prioridade"),
-          OrdemServico.distinct("situacao"),
-        ]);
 
-      return {
-        setores: setores.filter(Boolean).sort(),
-        solicitantes: solicitantes.filter(Boolean).sort(),
-        executores: executores.filter(Boolean).sort(),
-        prioridades: prioridades.filter(Boolean).sort(),
-        situacoes: situacoes.filter(Boolean).sort(),
-      };
-    } catch (error) {
-      throw error;
-    }
+  async updateGeneric(id, dados) {
+    return await OrdemServico.findByIdAndUpdate(
+      id,
+      { $set: dados },
+      { returnDocument: "after", runValidators: true }
+    );
   }
 }
 

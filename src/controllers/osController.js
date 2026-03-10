@@ -1,5 +1,6 @@
 const osService = require("../services/osService");
-
+const User = require("../models/User");
+const { Setor, Prioridade } = require("../models/GenericName");
 class OSController {
   async create(req, res) {
     try {
@@ -64,10 +65,17 @@ class OSController {
   }
   async getOptions(req, res) {
     try {
-      const opcoes = await osService.getOptions();
-      return res.json(opcoes);
+      console.log("✈️ Requisição chegou no CONTROLLER de opções");
+
+      // CHAMADA PARA O SERVICE (Onde está a lógica de verdade)
+      const options = await osService.getOptions();
+
+      return res.json(options);
     } catch (error) {
-      return res.status(500).json({ erro: error.message });
+      console.error("Erro no Controller getOptions:", error.message);
+      return res
+        .status(500)
+        .json({ erro: "Erro ao carregar opções dinâmicas" });
     }
   }
   async getNext(req, res) {
