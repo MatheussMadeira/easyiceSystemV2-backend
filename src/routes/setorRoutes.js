@@ -1,4 +1,4 @@
-const createGenericRouter = require("./GenericRouter");
+const createGenericRouter = require("./genericRouter");
 const GenericController = require("../controllers/GenericController");
 const { SetorService } = require("../services/configServices");
 
