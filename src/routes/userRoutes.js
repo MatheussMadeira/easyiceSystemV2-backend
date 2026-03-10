@@ -1,5 +1,5 @@
 const createGenericRouter = require("./genericRouter");
-const GenericController = require("../controllers/GenericController");
+const GenericController = require("../controllers/genericController");
 const UserService = require("../services/userService");
 
 const userCtrl = new GenericController(UserService);
