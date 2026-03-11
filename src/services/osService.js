@@ -23,7 +23,6 @@ class OSService {
     try {
       const proximoEsperado = await this.getNextNumber();
 
-      // Checa se o que foi enviado existe no Mestre OU no Histórico das OSs
       const [
         setorMestre,
         setorHist,
@@ -66,8 +65,7 @@ class OSService {
     try {
       console.log("--- BUSCANDO OPÇÕES DIRETAS DO BANCO ---");
 
-      // Buscamos apenas nas coleções de referência (Mestre)
-      // O uso de $in permite que um usuário ADMIN também apareça em ambas as listas se necessário
+     
       const [sDocs, solDocs, exeDocs, priDocs] = await Promise.all([
         Setor.find({}, "nome").sort({ nome: 1 }),
         User.find(
@@ -93,8 +91,7 @@ class OSService {
         executores: exeDocs.length,
       });
 
-      // Mapeamos apenas os nomes das coleções oficiais
-      // Usamos .toUpperCase() para garantir o padrão visual novo
+
       return {
         setores: sDocs.map((d) => d.nome.toUpperCase()),
         solicitantes: solDocs.map((d) => d.nome.toUpperCase()),
