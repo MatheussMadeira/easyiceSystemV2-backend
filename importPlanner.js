@@ -64,7 +64,8 @@ async function migrar() {
           descricaoAbertura: String(item["Descrição abertura"] || ""),
           dataFechamento: formatarData(item["Data de fechamento"]),
           valorPecas: Number(item["VALOR DE PEÇAS"]) || 0,
-          observacoes: String(item["descricaoFechamento"] || ""),
+          descricaoProcesso: String(item["observaçoes"] || ""),
+          descricaoFechamento: String(item["Descrição fechamento"] || ""),
           item_id_monday: String(item["Item ID (auto generated)"] || ""),
         });
       }
