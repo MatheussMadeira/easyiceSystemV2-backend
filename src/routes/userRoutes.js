@@ -1,7 +1,4 @@
 const createGenericRouter = require("./genericRouter");
-const GenericController = require("../controllers/genericController");
-const UserService = require("../services/userService");
+const userController = require("../controllers/userController");
 
-const userCtrl = new GenericController(UserService);
-
-module.exports = createGenericRouter(userCtrl);
+module.exports = createGenericRouter(userController);

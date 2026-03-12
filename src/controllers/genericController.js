@@ -33,6 +33,22 @@ class GenericController {
       return res.status(400).json({ erro: error.message });
     }
   }
+  async updatePassword(req, res) {
+    try {
+      const { id } = req.params;
+      const { novaSenha } = req.body;
+
+      if (!novaSenha) {
+        return res.status(400).json({ erro: "A nova senha é obrigatória." });
+      }
+
+      const atualizado = await this.service.updatePassword(id, novaSenha);
+
+      return res.json({ mensagem: "Senha alterada com sucesso!" });
+    } catch (error) {
+      return res.status(400).json({ erro: error.message });
+    }
+  }
 
   async delete(req, res) {
     try {

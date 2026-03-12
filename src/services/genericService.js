@@ -1,3 +1,4 @@
+
 class GenericService {
   constructor(model) {
     this.model = model;
