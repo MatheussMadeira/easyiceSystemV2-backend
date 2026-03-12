@@ -1,74 +1,71 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
-const User = require("./src/models/User");
+const xlsx = require("xlsx");
+// Importe o seu model real para garantir que os tipos de dados batam
 const OrdemServico = require("./src/models/OrdemServico");
 
-const gerarEmailBase = (nome) => {
-  return nome
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, ".")
-    .replace(/[()]/g, "");
-};
-
-async function popularBanco() {
+async function migrar() {
   try {
     await mongoose.connect(process.env.MONGO_URI);
+    console.log("✅ Conectado ao MongoDB. Iniciando reset de OS...");
 
-    // 1. Reset Total e Limpeza de Índices
-    console.log("🧹 Limpando usuários e sincronizando índices...");
-    await User.deleteMany({});
-    await User.syncIndexes();
+    // 1. Lendo a Planilha
+    const workbook = xlsx.readFile("./dados.xlsx", {
+      cellDates: true,
+      cellText: false,
+    });
 
-    const [solicitantesOS, executoresOS] = await Promise.all([
-      OrdemServico.distinct("solicitante"),
-      OrdemServico.distinct("executor"),
-    ]);
+    const sheetName = workbook.SheetNames[0];
+    const rawData = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], {
+      range: 4, // Pula as primeiras 4 linhas conforme sua planilha anterior
+    });
 
-    const usuariosUnicos = [
-      ...new Set(
-        [...solicitantesOS, ...executoresOS].map((n) => n?.trim().toUpperCase())
-      ),
-    ].filter(Boolean);
+    console.log(`📊 Lendo ${rawData.length} linhas da nova planilha...`);
 
-    const emailsUtilizados = new Set();
-    console.log(`👥 Processando ${usuariosUnicos.length} nomes...`);
-
-    for (const nome of usuariosUnicos) {
-      let emailBase = gerarEmailBase(nome);
-      let emailFinal = `${emailBase}@easyice.com.br`;
-      let contador = 1;
-
-      // Lógica de Desempate: Se o e-mail já foi usado por outro "Nome" neste loop
-      while (emailsUtilizados.has(emailFinal)) {
-        contador++;
-        emailFinal = `${emailBase}${contador}@easyice.com.br`;
+    const formatarDataSeguro = (valor) => {
+      if (!valor) return null;
+      if (valor instanceof Date) {
+        valor.setHours(valor.getHours() + 3);
+        return valor;
       }
+      if (typeof valor === "number") {
+        return new Date(Math.round((valor - 25569) * 86400 * 1000));
+      }
+      const data = new Date(valor);
+      return isNaN(data.getTime()) ? null : data;
+    };
 
-      emailsUtilizados.add(emailFinal);
+    // 2. Mapeamento - AJUSTE OS NOMES ENTRE ASAS [" "] SE MUDARAM NA PLANILHA
+    const dadosFormatados = rawData.map((item) => ({
+      numeroOS: String(item["Número"] || ""),
+      dataAbertura: formatarDataSeguro(item["Data de abertura"]),
+      setor: item["Setor"] || "N/A",
+      solicitante: item["Solicitante"] || "N/A",
+      executor: item["Executor"] || "Não Atribuído",
+      prioridade: item["Prioridade"] || "Normal",
+      situacao: item["Situação"] || "EM ABERTO",
+      equipamento: item["Equipamento"] || "N/A",
+      descricaoAbertura: item["Descrição abertura"] || "",
+      dataFechamento: formatarDataSeguro(item["Data de fechamento"]),
+      valorPecas: Number(item["VALOR DE PEÇAS"]) || 0,
+      observacoes: item["Observações"] || "",
+      item_id_monday: String(item["Item ID (auto generated)"] || ""),
+    }));
 
-      const roles = [];
-      if (solicitantesOS.some((n) => n?.toUpperCase() === nome))
-        roles.push("SOLICITANTE");
-      if (executoresOS.some((n) => n?.toUpperCase() === nome))
-        roles.push("EXECUTOR");
+    // 3. Reset da Coleção de OS
+    console.log("🗑️ Apagando ordens de serviço antigas...");
+    await OrdemServico.deleteMany({}); // APAGA APENAS AS OS, MANTÉM USUÁRIOS
 
-      await User.create({
-        nome,
-        email: emailFinal,
-        funcoes: roles,
-        password: "123",
-        ativo: true,
-      });
-    }
+    // 4. Inserção das novas
+    console.log("📤 Inserindo novos dados...");
+    await OrdemServico.insertMany(dadosFormatados);
 
-    console.log("\n✅ Migração concluída sem erros de duplicata!");
+    console.log("🚀 Migração de OS concluída com sucesso!");
     process.exit();
-  } catch (err) {
-    console.error("❌ Erro crítico:", err);
+  } catch (error) {
+    console.error("❌ Erro na migração:", error);
     process.exit(1);
   }
 }
 
-popularBanco();
+migrar();

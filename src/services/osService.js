@@ -65,7 +65,6 @@ class OSService {
     try {
       console.log("--- BUSCANDO OPÇÕES DIRETAS DO BANCO ---");
 
-     
       const [sDocs, solDocs, exeDocs, priDocs] = await Promise.all([
         Setor.find({}, "nome").sort({ nome: 1 }),
         User.find(
@@ -90,7 +89,6 @@ class OSService {
         solicitantes: solDocs.length,
         executores: exeDocs.length,
       });
-
 
       return {
         setores: sDocs.map((d) => d.nome.toUpperCase()),
@@ -148,9 +146,8 @@ class OSService {
     }
   }
 
-  // Métodos de leitura e deleção (Simples)
   async read() {
-    return await OrdemServico.find().sort({ dataAbertura: -1 });
+    return await OrdemServico.find().sort({ numeroOS: -1 });
   }
 
   async findById(id) {

@@ -1,80 +1,89 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
 const xlsx = require("xlsx");
-
-const OrdemServicoSchema = new mongoose.Schema({
-  numeroOS: String,
-  dataAbertura: Date,
-  setor: String,
-  solicitante: String,
-  executor: String,
-  prioridade: String,
-  situacao: String,
-  equipamento: String,
-  descricaoAbertura: String,
-  dataFechamento: Date,
-  valorPecas: Number,
-  observacoes: String,
-  item_id_monday: String,
-});
-
-const OrdemServico = mongoose.model("OrdemServico", OrdemServicoSchema);
+const OrdemServico = require("./src/models/OrdemServico");
 
 async function migrar() {
   try {
+    console.log("🔗 Conectando ao MongoDB...");
     await mongoose.connect(process.env.MONGO_URI);
-    console.log("✅ Conectado ao MongoDB para migração...");
 
-    const workbook = xlsx.readFile("./dados.xlsx", {
-      cellDates: true,
-      cellText: false,
-    });
-
+    console.log("📂 Lendo arquivo dados.xlsx...");
+    const workbook = xlsx.readFile("./dados.xlsx", { cellDates: true });
     const sheetName = workbook.SheetNames[0];
+
+    // Range 4 pula as linhas de título do Monday
     const rawData = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], {
       range: 4,
     });
 
-    console.log(`📊 Lendo ${rawData.length} linhas da planilha...`);
-
-    const formatarDataSeguro = (valor) => {
+    const formatarData = (valor) => {
       if (!valor) return null;
-
-      if (valor instanceof Date) {
-        valor.setHours(valor.getHours() + 3);
-        return valor;
-      }
-      if (typeof valor === "number") {
-        return new Date(Math.round((valor - 25569) * 86400 * 1000));
-      }
       const data = new Date(valor);
       return isNaN(data.getTime()) ? null : data;
     };
 
-    const dadosFormatados = rawData.map((item) => ({
-      numeroOS: String(item["Número"] || ""),
-      // Usando a nova função de formatação
-      dataAbertura: formatarDataSeguro(item["Data de abertura"]),
-      setor: item["Setor"] || "N/A",
-      solicitante: item["Solicitante"] || "N/A",
-      executor: item["Executor"] || "Não Atribuído",
-      prioridade: item["Prioridade"] || "Normal",
-      situacao: item["Situação"] || "EM ABERTO",
-      equipamento: item["Equipamento"] || "N/A",
-      descricaoAbertura: item["Descrição abertura"] || "",
-      dataFechamento: formatarDataSeguro(item["Data de fechamento"]),
-      valorPecas: Number(item["VALOR DE PEÇAS"]) || 0,
-      observacoes: item["Observações"] || "",
-      item_id_monday: String(item["Item ID (auto generated)"] || ""),
-    }));
+    let dadosParaInserir = [];
+    let numerosVistos = new Set();
 
-    await OrdemServico.deleteMany({});
-    await OrdemServico.insertMany(dadosFormatados);
+    for (let item of rawData) {
+      let numeroRaw = item["Número"];
 
-    console.log("🚀 Migração concluída com sucesso!");
-    process.exit();
+      // Pula se a linha não tiver número de OS
+      if (numeroRaw === undefined || numeroRaw === "" || numeroRaw === null)
+        continue;
+
+      const numeroFinal = String(numeroRaw).trim();
+      const dataAbertura = formatarData(item["Data de abertura"]);
+
+      // Só adiciona se tiver data e não for duplicado na planilha
+      if (dataAbertura && !numerosVistos.has(numeroFinal)) {
+        numerosVistos.add(numeroFinal);
+
+        dadosParaInserir.push({
+          numeroOS: numeroFinal,
+          dataAbertura: dataAbertura,
+          setor: String(item["Setor"] || "N/A")
+            .trim()
+            .toUpperCase(),
+          solicitante: String(item["Solicitante"] || "N/A")
+            .trim()
+            .toUpperCase(),
+          executor: String(item["Executor"] || "NÃO ATRIBUÍDO")
+            .trim()
+            .toUpperCase(),
+          prioridade: String(item["Prioridade"] || "NORMAL")
+            .trim()
+            .toUpperCase(),
+          situacao: String(item["Situação"] || "EM ABERTO")
+            .trim()
+            .toUpperCase(),
+          equipamento: String(item["Equipamento"] || "N/A")
+            .trim()
+            .toUpperCase(),
+          descricaoAbertura: String(item["Descrição abertura"] || ""),
+          dataFechamento: formatarData(item["Data de fechamento"]),
+          valorPecas: Number(item["VALOR DE PEÇAS"]) || 0,
+          observacoes: String(item["descricaoFechamento"] || ""),
+          item_id_monday: String(item["Item ID (auto generated)"] || ""),
+        });
+      }
+    }
+
+    // ORDENAÇÃO: Garante que 2 venha antes de 10
+    dadosParaInserir.sort((a, b) => Number(a.numeroOS) - Number(b.numeroOS));
+
+    console.log(
+      `📤 Inserindo ${dadosParaInserir.length} registros ordenados...`
+    );
+
+    // Inserção em lote
+    await OrdemServico.insertMany(dadosParaInserir);
+
+    console.log("🚀 TABELA POPULADA COM SUCESSO E EM ORDEM!");
+    process.exit(0);
   } catch (error) {
-    console.error("❌ Erro na migração:", error);
+    console.error("❌ ERRO NA MIGRAÇÃO:", error.message);
     process.exit(1);
   }
 }

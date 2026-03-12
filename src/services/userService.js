@@ -7,9 +7,13 @@ class UserService extends GenericService {
     super(model);
   }
   async create(dados) {
-    const senhaLimpa = dados.senha || "123456";
+    const senhaLimpa = dados.password || "123456";
     const salt = await bcrypt.genSalt(10);
-    dados.senha = await bcrypt.hash(senhaLimpa, salt);
+    const hash = await bcrypt.hash(senhaLimpa, salt);
+
+    dados.password = hash;
+
+    if (dados.senha) delete dados.senha;
 
     return await super.create(dados);
   }

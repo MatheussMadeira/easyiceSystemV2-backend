@@ -2,32 +2,81 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const OrdemServico = require("./src/models/OrdemServico");
 
-async function corrigirJose() {
+async function clean() {
   try {
     await mongoose.connect(process.env.MONGO_URI);
-    console.log("🔍 Buscando registros do JOSE sem acento...");
+    console.log("🧹 Iniciando limpeza de dados...");
 
-    // 1. Corrigir onde ele é SOLICITANTE
-    const resSol = await OrdemServico.updateMany(
-      { solicitante: "JOSÉ" },
-      { $set: { solicitante: "JOSÉ RODRIGUES" } }
-    );
+    console.log("🔠 Convertendo campos para CAPS e limpando espaços...");
 
-    // 2. Corrigir onde ele é EXECUTOR
-    const resExe = await OrdemServico.updateMany(
-      { executor: "JOSÉ" },
-      { $set: { executor: "JOSÉ RODRIGUES" } }
-    );
+    const camposParaCaps = [
+      "solicitante",
+      "executor",
+      "setor",
+      "equipamento",
+      "situacao",
+      "prioridade",
+    ];
 
-    console.log(`\n✅ Finalizado!`);
-    console.log(`👉 Solicitantes atualizados: ${resSol.modifiedCount}`);
-    console.log(`👉 Executores atualizados: ${resExe.modifiedCount}`);
+    for (const campo of camposParaCaps) {
+      await OrdemServico.updateMany(
+        { [campo]: { $exists: true, $type: "string" } },
+        [
+          {
+            $set: {
+              [campo]: { $trim: { input: { $toUpper: `$${campo}` } } },
+            },
+          },
+        ]
+      );
+    }
+    console.log("✅ Todos os campos agora estão em CAPS.");
 
+    const correcoes = [
+      { errado: "JOSÉ", correto: "JOSÉ RODRIGUES" },
+      { errado: "JOSE", correto: "JOSÉ RODRIGUES" },
+      { errado: "JOSE RODRIGUES", correto: "JOSÉ RODRIGUES" },
+      { errado: "MANUTENCAO", correto: "MANUTENÇÃO" },
+    ];
+
+    for (const c of correcoes) {
+      const resSol = await OrdemServico.updateMany(
+        { solicitante: c.errado },
+        { $set: { solicitante: c.correto } }
+      );
+
+      const resExe = await OrdemServico.updateMany(
+        { executor: c.errado },
+        { $set: { executor: c.correto } }
+      );
+
+      if (resSol.modifiedCount > 0 || resExe.modifiedCount > 0) {
+        console.log(
+          `✅ Padronizado: "${c.errado}" -> "${c.correto}" (${
+            resSol.modifiedCount + resExe.modifiedCount
+          } alterações)`
+        );
+      }
+    }
+
+    // --- PASSO 3: REMOVER REGISTROS INDESEJADOS (Opcional) ---
+    // Se você quiser deletar de vez registros que não devem aparecer
+    console.log("🗑️ Removendo registros marcados para exclusão...");
+    const resDel = await OrdemServico.deleteMany({
+      $or: [
+        { solicitante: "REMOVER" },
+        { executor: "REMOVER" },
+        { numeroOS: "" }, // Exemplo: remove se não tiver número
+      ],
+    });
+    if (resDel.deletedCount > 0)
+      console.log(`🗑️ ${resDel.deletedCount} registros deletados.`);
+
+    console.log("✨ Limpeza concluída!");
     process.exit();
   } catch (err) {
     console.error("❌ Erro:", err);
     process.exit(1);
   }
 }
-
-corrigirJose();
+clean();

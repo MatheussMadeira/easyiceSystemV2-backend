@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const OrdemServicoSchema = new mongoose.Schema(
   {
-    numeroOS: { type: String, required: true, unique: true },
+    numeroOS: { type: Number, required: true, unique: true },
     dataAbertura: { type: Date, required: true },
     setor: { type: String, required: true, default: "N/A" },
     solicitante: { type: String, required: true, default: "N/A" },

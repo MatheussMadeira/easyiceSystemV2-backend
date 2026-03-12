@@ -14,7 +14,8 @@ class OSController {
 
   async read(req, res) {
     try {
-      const ordens = await osService.read();
+      const ordens = await OrdemServico.find().sort({ numeroOS: -1 });
+
       return res.json(ordens);
     } catch (error) {
       return res.status(500).json({ erro: error.message });
