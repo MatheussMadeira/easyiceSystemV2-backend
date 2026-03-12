@@ -147,7 +147,9 @@ class OSService {
   }
 
   async read() {
-    return await OrdemServico.find().sort({ numeroOS: -1 });
+    return await OrdemServico.find()
+      .sort({ numeroOS: -1 }) // -1 para as mais novas no topo
+      .collation({ locale: "en_US", numericOrdering: true });
   }
 
   async findById(id) {

@@ -1,6 +1,8 @@
 const osService = require("../services/osService");
 const User = require("../models/User");
 const { Setor, Prioridade } = require("../models/GenericName");
+const OrdemServico = require("../models/OrdemServico");
+
 class OSController {
   async create(req, res) {
     try {
@@ -14,10 +16,14 @@ class OSController {
 
   async read(req, res) {
     try {
-      const ordens = await OrdemServico.find().sort({ numeroOS: -1 });
+      // Agora o OrdemServico estará definido
+      const ordens = await OrdemServico.find()
+        .sort({ numeroOS: -1 })
+        .collation({ locale: "en_US", numericOrdering: true });
 
       return res.json(ordens);
     } catch (error) {
+      console.error("Erro no GET OS:", error);
       return res.status(500).json({ erro: error.message });
     }
   }
