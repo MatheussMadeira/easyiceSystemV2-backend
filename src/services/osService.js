@@ -3,31 +3,43 @@ const User = require("../models/User");
 const { Setor, Prioridade } = require("../models/GenericName");
 
 class OSService {
-  // Busca o próximo número baseado na última OS (Garante sequência a partir da 1270)
+  // Busca o próximo número baseado na última OS
   async getNextNumber() {
     try {
+      console.log(
+        "--- [DEBUG getNextNumber] Iniciando busca do último número ---"
+      );
       const ultimaOS = await OrdemServico.findOne({}, { numeroOS: 1 })
         .sort({ numeroOS: -1 })
         .collation({ locale: "en_US", numericOrdering: true });
 
-      if (!ultimaOS || !ultimaOS.numeroOS) return 1000;
-      return Number(ultimaOS.numeroOS) + 1;
+      if (!ultimaOS || !ultimaOS.numeroOS) {
+        console.log(
+          "[DEBUG getNextNumber] Nenhuma OS encontrada, retornando 1000"
+        );
+        return 1000;
+      }
+
+      const proximo = Number(ultimaOS.numeroOS) + 1;
+      console.log(
+        `[DEBUG getNextNumber] Última OS: ${ultimaOS.numeroOS}, Próximo sugerido: ${proximo}`
+      );
+      return proximo;
     } catch (error) {
-      console.error("Erro ao buscar próximo número:", error);
+      console.error("### ERRO getNextNumber ###", error.message);
       return 1000;
     }
   }
 
-  // CRIAÇÃO: Validação Híbrida (Mestre + Histórico)
   async create(dados, arquivos) {
     try {
-      console.log("--- [DEBUG CREATE OS] Início do processo ---");
-      console.log("Dados recebidos:", JSON.stringify(dados, null, 2));
+      console.log(
+        "--- [DEBUG CREATE] Payload recebido ---",
+        JSON.stringify(dados, null, 2)
+      );
 
       const proximoEsperado = await this.getNextNumber();
-      console.log("Próximo número de OS gerado:", proximoEsperado);
 
-      // 1. Log das buscas para saber qual validação pode estar falhando
       const [
         setorMestre,
         setorHist,
@@ -44,24 +56,18 @@ class OSService {
         OrdemServico.findOne({ prioridade: dados.prioridade }),
       ]);
 
-      console.log("Resultados das validações:", {
-        setorEncontrado: !!(setorMestre || setorHist),
-        solicitanteEncontrado: !!(solicitanteMestre || solicitanteHist),
-        prioridadeEncontrada: !!(prioridadeMestre || prioridadeHist),
+      console.log("[DEBUG CREATE] Verificação de integridade:", {
+        setor: !!(setorMestre || setorHist),
+        solicitante: !!(solicitanteMestre || solicitanteHist),
+        prioridade: !!(prioridadeMestre || prioridadeHist),
       });
 
-      if (!setorMestre && !setorHist) {
-        console.warn(`Falha: Setor "${dados.setor}" não existe.`);
+      if (!setorMestre && !setorHist)
         throw new Error(`Setor inválido: ${dados.setor}`);
-      }
-      if (!solicitanteMestre && !solicitanteHist) {
-        console.warn(`Falha: Solicitante "${dados.solicitante}" não existe.`);
+      if (!solicitanteMestre && !solicitanteHist)
         throw new Error(`Solicitante inválido: ${dados.solicitante}`);
-      }
-      if (!prioridadeMestre && !prioridadeHist) {
-        console.warn(`Falha: Prioridade "${dados.prioridade}" não existe.`);
+      if (!prioridadeMestre && !prioridadeHist)
         throw new Error(`Prioridade inválida: ${dados.prioridade}`);
-      }
 
       const novaOSData = {
         ...dados,
@@ -71,62 +77,40 @@ class OSService {
         dataAbertura: new Date(),
       };
 
-      console.log("Tentando salvar no Banco de Dados...");
+      console.log(
+        "[DEBUG CREATE] Tentando salvar objeto final:",
+        JSON.stringify(novaOSData, null, 2)
+      );
       const novaOS = new OrdemServico(novaOSData);
-      const resultado = await novaOS.save();
+      const salvo = await novaOS.save();
 
-      console.log("OS salva com sucesso! ID:", resultado._id);
-      return resultado;
+      console.log("--- [DEBUG CREATE] SUCESSO! OS Gerada:", salvo.numeroOS);
+      return salvo;
     } catch (error) {
-      // ESTA PARTE RESOLVE O [OBJECT OBJECT]
-      console.error("### ERRO DETALHADO NO CREATE SERVICE ###");
-      console.error("Mensagem:", error.message);
-
-      // Se for erro de validação do Mongoose, ele lista qual campo falhou
-      if (error.errors) {
-        console.error(
-          "Erros de Validação (Mongoose):",
-          JSON.stringify(error.errors, null, 2)
-        );
-      }
-
-      // Imprime o stack trace para ver a linha exata do erro
-      console.error("Stack Trace:", error.stack);
-
-      // Lança o erro novamente para a Controller
+      this.logDetailedError("CREATE", error);
       throw error;
     }
   }
 
   async getOptions() {
     try {
-      console.log("--- BUSCANDO OPÇÕES DIRETAS DO BANCO ---");
-
+      console.log("--- [DEBUG getOptions] Iniciando consulta de listas ---");
       const [sDocs, solDocs, exeDocs, priDocs] = await Promise.all([
         Setor.find({}, "nome").sort({ nome: 1 }),
         User.find(
-          {
-            funcoes: { $in: ["SOLICITANTE", "ADMIN"] },
-            ativo: true,
-          },
+          { funcoes: { $in: ["SOLICITANTE", "ADMIN"] }, ativo: true },
           "nome"
         ).sort({ nome: 1 }),
         User.find(
-          {
-            funcoes: { $in: ["EXECUTOR", "ADMIN"] },
-            ativo: true,
-          },
+          { funcoes: { $in: ["EXECUTOR", "ADMIN"] }, ativo: true },
           "nome"
         ).sort({ nome: 1 }),
         Prioridade.find({}, "nome").sort({ nome: 1 }),
       ]);
 
-      console.log("Docs encontrados no banco:", {
-        setores: sDocs.length,
-        solicitantes: solDocs.length,
-        executores: exeDocs.length,
-      });
-
+      console.log(
+        `[DEBUG getOptions] Retornando: ${sDocs.length} setores, ${solDocs.length} usuários.`
+      );
       return {
         setores: sDocs.map((d) => d.nome.toUpperCase()),
         solicitantes: solDocs.map((d) => d.nome.toUpperCase()),
@@ -135,19 +119,19 @@ class OSService {
         situacoes: ["EM ABERTO", "EM PROCESSO", "CONCLUÍDO", "CANCELADA"],
       };
     } catch (error) {
-      console.error("Erro no getOptions Service:", error);
+      this.logDetailedError("GET_OPTIONS", error);
       throw error;
     }
   }
 
   async update(id, dados, arquivos) {
     try {
+      console.log(`--- [DEBUG UPDATE] Atualizando OS ID: ${id} ---`);
       const osParaAtualizar = await OrdemServico.findById(id);
       if (!osParaAtualizar) throw new Error("OS não encontrada.");
 
-      if (osParaAtualizar.situacao === "CONCLUÍDO") {
-        throw new Error("Esta Ordem de Serviço já se encontra CONCLUÍDA.");
-      }
+      if (osParaAtualizar.situacao === "CONCLUÍDO")
+        throw new Error("OS já CONCLUÍDA.");
 
       let camposParaAtualizar = {
         situacao: dados.situacao,
@@ -172,41 +156,98 @@ class OSService {
         }
       }
 
+      console.log(
+        "[DEBUG UPDATE] Campos a aplicar:",
+        JSON.stringify(camposParaAtualizar, null, 2)
+      );
       return await OrdemServico.findByIdAndUpdate(
         id,
         { $set: camposParaAtualizar },
         { new: true, runValidators: true }
       );
     } catch (error) {
-      console.error("Erro no Update Service:", error.message);
+      this.logDetailedError("UPDATE", error);
       throw error;
     }
   }
 
   async read() {
-    return await OrdemServico.find()
-      .sort({ numeroOS: -1 }) // -1 para as mais novas no topo
-      .collation({ locale: "en_US", numericOrdering: true });
+    try {
+      return await OrdemServico.find()
+        .sort({ numeroOS: -1 })
+        .collation({ locale: "en_US", numericOrdering: true });
+    } catch (error) {
+      console.error("### ERRO READ ###", error.message);
+      throw error;
+    }
   }
 
   async findById(id) {
-    const os = await OrdemServico.findById(id);
-    if (!os) throw new Error("Ordem de Serviço não encontrada.");
-    return os;
+    try {
+      const os = await OrdemServico.findById(id);
+      if (!os) throw new Error("OS não encontrada.");
+      return os;
+    } catch (error) {
+      this.logDetailedError("FINDBYID", error);
+      throw error;
+    }
   }
 
   async delete(id) {
-    const deletada = await OrdemServico.findByIdAndDelete(id);
-    if (!deletada) throw new Error("OS não encontrada");
-    return deletada;
+    try {
+      console.log(`--- [DEBUG DELETE] Removendo OS ID: ${id} ---`);
+      const deletada = await OrdemServico.findByIdAndDelete(id);
+      if (!deletada) throw new Error("OS não encontrada");
+      return deletada;
+    } catch (error) {
+      this.logDetailedError("DELETE", error);
+      throw error;
+    }
   }
-
   async updateGeneric(id, dados) {
-    return await OrdemServico.findByIdAndUpdate(
-      id,
-      { $set: dados },
-      { returnDocument: "after", runValidators: true }
-    );
+    try {
+      console.log(
+        `--- [DEBUG updateGeneric] Iniciando atualização genérica ---`
+      );
+      console.log(`ID alvo: ${id}`);
+      console.log(`Dados para injeção:`, JSON.stringify(dados, null, 2));
+
+      const atualizado = await OrdemServico.findByIdAndUpdate(
+        id,
+        { $set: dados },
+        {
+          returnDocument: "after", // Retorna o doc atualizado
+          runValidators: true, // Garante que o Mongoose valide os campos novos
+        }
+      );
+
+      if (!atualizado) {
+        console.warn(
+          `[DEBUG updateGeneric] Nenhuma OS encontrada para o ID: ${id}`
+        );
+      } else {
+        console.log(`[DEBUG updateGeneric] OS atualizada com sucesso!`);
+      }
+
+      return atualizado;
+    } catch (error) {
+      this.logDetailedError("UPDATE_GENERIC", error);
+      throw error;
+    }
+  }
+  // Função Auxiliar de Log para evitar o [object Object]
+  logDetailedError(metodo, error) {
+    console.error(`### [ERRO FATAL] Método: ${metodo} ###`);
+    console.error("Mensagem:", error.message);
+    if (error.errors) {
+      console.error(
+        "Erros de Validação (Mongoose):",
+        JSON.stringify(error.errors, null, 2)
+      );
+    }
+    if (error.stack) {
+      console.error("Stack Trace:", error.stack);
+    }
   }
 }
 
