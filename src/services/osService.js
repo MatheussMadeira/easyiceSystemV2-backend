@@ -21,8 +21,13 @@ class OSService {
   // CRIAÇÃO: Validação Híbrida (Mestre + Histórico)
   async create(dados, arquivos) {
     try {
-      const proximoEsperado = await this.getNextNumber();
+      console.log("--- [DEBUG CREATE OS] Início do processo ---");
+      console.log("Dados recebidos:", JSON.stringify(dados, null, 2));
 
+      const proximoEsperado = await this.getNextNumber();
+      console.log("Próximo número de OS gerado:", proximoEsperado);
+
+      // 1. Log das buscas para saber qual validação pode estar falhando
       const [
         setorMestre,
         setorHist,
@@ -39,11 +44,24 @@ class OSService {
         OrdemServico.findOne({ prioridade: dados.prioridade }),
       ]);
 
-      if (!setorMestre && !setorHist) throw new Error(`Setor inválido.`);
-      if (!solicitanteMestre && !solicitanteHist)
-        throw new Error(`Solicitante inválido.`);
-      if (!prioridadeMestre && !prioridadeHist)
-        throw new Error(`Prioridade inválida.`);
+      console.log("Resultados das validações:", {
+        setorEncontrado: !!(setorMestre || setorHist),
+        solicitanteEncontrado: !!(solicitanteMestre || solicitanteHist),
+        prioridadeEncontrada: !!(prioridadeMestre || prioridadeHist),
+      });
+
+      if (!setorMestre && !setorHist) {
+        console.warn(`Falha: Setor "${dados.setor}" não existe.`);
+        throw new Error(`Setor inválido: ${dados.setor}`);
+      }
+      if (!solicitanteMestre && !solicitanteHist) {
+        console.warn(`Falha: Solicitante "${dados.solicitante}" não existe.`);
+        throw new Error(`Solicitante inválido: ${dados.solicitante}`);
+      }
+      if (!prioridadeMestre && !prioridadeHist) {
+        console.warn(`Falha: Prioridade "${dados.prioridade}" não existe.`);
+        throw new Error(`Prioridade inválida: ${dados.prioridade}`);
+      }
 
       const novaOSData = {
         ...dados,
@@ -53,10 +71,29 @@ class OSService {
         dataAbertura: new Date(),
       };
 
+      console.log("Tentando salvar no Banco de Dados...");
       const novaOS = new OrdemServico(novaOSData);
-      return await novaOS.save();
+      const resultado = await novaOS.save();
+
+      console.log("OS salva com sucesso! ID:", resultado._id);
+      return resultado;
     } catch (error) {
-      console.error("Erro no Create Service:", error.message);
+      // ESTA PARTE RESOLVE O [OBJECT OBJECT]
+      console.error("### ERRO DETALHADO NO CREATE SERVICE ###");
+      console.error("Mensagem:", error.message);
+
+      // Se for erro de validação do Mongoose, ele lista qual campo falhou
+      if (error.errors) {
+        console.error(
+          "Erros de Validação (Mongoose):",
+          JSON.stringify(error.errors, null, 2)
+        );
+      }
+
+      // Imprime o stack trace para ver a linha exata do erro
+      console.error("Stack Trace:", error.stack);
+
+      // Lança o erro novamente para a Controller
       throw error;
     }
   }
