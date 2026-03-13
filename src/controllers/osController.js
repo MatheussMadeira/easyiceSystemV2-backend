@@ -5,12 +5,48 @@ const OrdemServico = require("../models/OrdemServico");
 
 class OSController {
   async create(req, res) {
+    console.log("✈️ [CONTROLLER CREATE] Iniciando...");
+
     try {
+      // DEBUG 1: Verificar se o corpo da requisição chegou (pode estar vazio no Render)
+      if (!req.body || Object.keys(req.body).length === 0) {
+        console.warn("⚠️ [CONTROLLER] ATENÇÃO: req.body chegou VAZIO!");
+      } else {
+        console.log(
+          "📦 [CONTROLLER] req.body recebido:",
+          JSON.stringify(req.body, null, 2)
+        );
+      }
+
+      // DEBUG 2: Verificar arquivos
+      console.log(
+        "📂 [CONTROLLER] req.files status:",
+        req.files ? "Recebeu arquivos" : "Sem arquivos"
+      );
+
+      // Chamada do Service
+      console.log("🚀 [CONTROLLER] Enviando dados para o Service...");
       const novaOS = await osService.create(req.body, req.files);
+
+      console.log("✅ [CONTROLLER] Service respondeu com SUCESSO");
       return res.status(201).json(novaOS);
     } catch (error) {
-      console.log("DETALHE DO ERRO NO CONTROLLER:", error.message);
-      return res.status(400).json({ erro: error.message });
+      // ISSO AQUI MATA O [OBJECT OBJECT]
+      console.error("❌ [CONTROLLER CREATE ERROR]:");
+      console.error("Mensagem:", error.message);
+
+      // Se o erro for um objeto estranho do Multer ou do Node, isso aqui abre ele:
+      if (typeof error === "object") {
+        console.error(
+          "Detalhes do objeto de erro:",
+          JSON.stringify(error, Object.getOwnPropertyNames(error), 2)
+        );
+      }
+
+      return res.status(400).json({
+        erro: error.message || "Erro desconhecido na Controller",
+        detalhes: error.stack, // Ajuda a ver a linha exata no console do navegador
+      });
     }
   }
 
