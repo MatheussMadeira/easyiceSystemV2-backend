@@ -10,6 +10,8 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+// Adicionado para suportar dados de formulários (importante para Multer)
+app.use(express.urlencoded({ extended: true }));
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -18,8 +20,31 @@ mongoose
   .then(() => console.log("✅ Banco EasyIce Conectado!"))
   .catch((err) => console.error("❌ Erro no Banco:", err));
 
-
 app.use("/api", routes);
+
+// --- MIDDLEWARE DE ERRO GLOBAL (ADICIONADO) ---
+// Este bloco captura o [object Object] e transforma em texto no log do Render
+app.use((err, req, res, next) => {
+  console.error("======= 🔥 DETALHE DO ERRO GLOBAL =======");
+  console.error("Mensagem:", err.message);
+  console.error("Stack:", err.stack);
+
+  // Se o erro for do Multer, ele terá um 'code'
+  if (err.code) {
+    console.error("Código do Erro (Multer/Siste):", err.code);
+  }
+
+  // Se houver campos de validação do Mongoose
+  if (err.errors) {
+    console.error("Erros de Validação:", JSON.stringify(err.errors, null, 2));
+  }
+
+  res.status(err.status || 500).json({
+    erro: err.message || "Erro interno no servidor",
+    detalhes: process.env.NODE_ENV === "development" ? err.stack : undefined,
+  });
+});
+// ----------------------------------------------
 
 const PORT = 3001;
 app.listen(PORT, () => {
