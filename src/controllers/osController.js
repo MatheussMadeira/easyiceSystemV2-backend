@@ -45,17 +45,15 @@ class OSController {
 
       return res.status(400).json({
         erro: error.message || "Erro desconhecido na Controller",
-        detalhes: error.stack, // Ajuda a ver a linha exata no console do navegador
+        detalhes: error.stack,
       });
     }
   }
 
   async read(req, res) {
     try {
-      // Agora o OrdemServico estará definido
-      const ordens = await OrdemServico.find()
-        .sort({ numeroOS: -1 })
-        .collation({ locale: "en_US", numericOrdering: true });
+      const filtrosDaUrl = req.query;
+      const ordens = await osService.read(filtrosDaUrl);
 
       return res.json(ordens);
     } catch (error) {

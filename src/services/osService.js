@@ -33,40 +33,21 @@ class OSService {
 
   async create(dados, arquivos) {
     try {
-      console.log(
-        "--- [DEBUG CREATE] Payload recebido ---",
-        JSON.stringify(dados, null, 2)
-      );
-
-      const proximoEsperado = await this.getNextNumber();
-
-      const [
-        setorMestre,
-        setorHist,
-        solicitanteMestre,
-        solicitanteHist,
-        prioridadeMestre,
-        prioridadeHist,
-      ] = await Promise.all([
-        Setor.findOne({ nome: dados.setor }),
-        OrdemServico.findOne({ setor: dados.setor }),
-        User.findOne({ nome: dados.solicitante }),
-        OrdemServico.findOne({ solicitante: dados.solicitante }),
-        Prioridade.findOne({ nome: dados.prioridade }),
-        OrdemServico.findOne({ prioridade: dados.prioridade }),
+      const [proximoEsperado, validacoes] = await Promise.all([
+        this.getNextNumber(),
+        Promise.all([
+          Setor.exists({ nome: dados.setor }),
+          User.exists({ nome: dados.solicitante }),
+          Prioridade.exists({ nome: dados.prioridade }),
+        ]),
       ]);
 
-      console.log("[DEBUG CREATE] Verificação de integridade:", {
-        setor: !!(setorMestre || setorHist),
-        solicitante: !!(solicitanteMestre || solicitanteHist),
-        prioridade: !!(prioridadeMestre || prioridadeHist),
-      });
+      const [setorExiste, solicitanteExiste, prioridadeExiste] = validacoes;
 
-      if (!setorMestre && !setorHist)
-        throw new Error(`Setor inválido: ${dados.setor}`);
-      if (!solicitanteMestre && !solicitanteHist)
+      if (!setorExiste) throw new Error(`Setor inválido: ${dados.setor}`);
+      if (!solicitanteExiste)
         throw new Error(`Solicitante inválido: ${dados.solicitante}`);
-      if (!prioridadeMestre && !prioridadeHist)
+      if (!prioridadeExiste)
         throw new Error(`Prioridade inválida: ${dados.prioridade}`);
 
       const novaOSData = {
@@ -77,21 +58,12 @@ class OSService {
         dataAbertura: new Date(),
       };
 
-      console.log(
-        "[DEBUG CREATE] Tentando salvar objeto final:",
-        JSON.stringify(novaOSData, null, 2)
-      );
-      const novaOS = new OrdemServico(novaOSData);
-      const salvo = await novaOS.save();
-
-      console.log("--- [DEBUG CREATE] SUCESSO! OS Gerada:", salvo.numeroOS);
-      return salvo;
+      return await new OrdemServico(novaOSData).save();
     } catch (error) {
       this.logDetailedError("CREATE", error);
       throw error;
     }
   }
-
   async getOptions() {
     try {
       console.log("--- [DEBUG getOptions] Iniciando consulta de listas ---");
@@ -171,13 +143,49 @@ class OSService {
     }
   }
 
-  async read() {
+  async read(query) {
     try {
-      return await OrdemServico.find()
+      let filtros = {};
+
+      const montarFiltroIn = (valor) => {
+        if (!valor || valor === "" || valor === "undefined") return undefined;
+        const arr = valor.split(",");
+        return { $in: arr };
+      };
+
+      const situacao = montarFiltroIn(query.situacao);
+      if (situacao) filtros.situacao = situacao;
+
+      const setor = montarFiltroIn(query.setor);
+      if (setor) filtros.setor = setor;
+
+      const solicitante = montarFiltroIn(query.solicitante);
+      if (solicitante) filtros.solicitante = solicitante;
+
+      const executor = montarFiltroIn(query.executor);
+      if (executor) filtros.executor = executor;
+
+      const prioridade = montarFiltroIn(query.prioridade);
+      if (prioridade) filtros.prioridade = prioridade;
+      if (query.busca) {
+        filtros.$or = [
+          { numeroOS: { $regex: termo, $options: "i" } },
+          { equipamento: { $regex: termo, $options: "i" } },
+          { solicitante: { $regex: termo, $options: "i" } },
+          { descricaoAbertura: { $regex: termo, $options: "i" } },
+        ];
+      }
+      const temFiltros = Object.keys(filtros).length > 0;
+      const limite = temFiltros ? 0 : 100;
+
+      console.log("🔍 Filtros aplicados no Mongo:", JSON.stringify(filtros));
+
+      return await OrdemServico.find(filtros)
         .sort({ numeroOS: -1 })
-        .collation({ locale: "en_US", numericOrdering: true });
+        .collation({ locale: "en_US", numericOrdering: true })
+        .limit(limite);
     } catch (error) {
-      console.error("### ERRO READ ###", error.message);
+      console.error("### ERRO NO READ SERVICE ###", error.message);
       throw error;
     }
   }
@@ -216,8 +224,8 @@ class OSService {
         id,
         { $set: dados },
         {
-          returnDocument: "after", // Retorna o doc atualizado
-          runValidators: true, // Garante que o Mongoose valide os campos novos
+          returnDocument: "after",
+          runValidators: true,
         }
       );
 
@@ -235,7 +243,6 @@ class OSService {
       throw error;
     }
   }
-  // Função Auxiliar de Log para evitar o [object Object]
   logDetailedError(metodo, error) {
     console.error(`### [ERRO FATAL] Método: ${metodo} ###`);
     console.error("Mensagem:", error.message);

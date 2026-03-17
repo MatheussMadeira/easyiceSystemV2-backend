@@ -23,4 +23,8 @@ const OrdemServicoSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+OrdemServicoSchema.index({ numeroOS: -1 });
+OrdemServicoSchema.index({ setor: 1 });
+OrdemServicoSchema.index({ solicitante: 1 });
+
 module.exports = mongoose.model("OrdemServico", OrdemServicoSchema);
