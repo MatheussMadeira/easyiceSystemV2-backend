@@ -168,6 +168,7 @@ class OSService {
       const prioridade = montarFiltroIn(query.prioridade);
       if (prioridade) filtros.prioridade = prioridade;
       if (query.busca) {
+        const termo = query.busca;
         filtros.$or = [
           { numeroOS: { $regex: termo, $options: "i" } },
           { equipamento: { $regex: termo, $options: "i" } },
