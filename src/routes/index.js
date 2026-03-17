@@ -1,5 +1,9 @@
 const express = require("express");
 const router = express.Router();
+router.get("/public/ping", (req, res) => {
+  res.status(200).json({ status: "ok", message: "Servidor ativo!" });
+});
+
 
 const setorRoutes = require("./setorRoutes");
 const userRoutes = require("./userRoutes");
