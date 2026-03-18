@@ -194,13 +194,14 @@ class OSService {
           { descricaoAbertura: { $regex: termo, $options: "i" } },
         ];
       }
+      const limitDinamico = query.limit ? parseInt(query.limit) : 100;
       const temFiltros = Object.keys(filtros).length > 0;
-      const limite = temFiltros ? 0 : 100;
+      const limiteFinal = temFiltros && !query.limit ? 0 : limitDinamico;
 
       return await OrdemServico.find(filtros)
         .sort({ numeroOS: -1 })
         .collation({ locale: "en_US", numericOrdering: true })
-        .limit(limite);
+        .limit(limiteFinal);
     } catch (error) {
       console.error("### ERRO NO READ SERVICE ###", error.message);
       throw error;
