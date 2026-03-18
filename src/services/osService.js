@@ -1,29 +1,21 @@
 const OrdemServico = require("../models/OrdemServico");
 const User = require("../models/User");
+const Log = require("../models/Log");
 const { Setor, Prioridade } = require("../models/GenericName");
 
 class OSService {
-  // Busca o próximo número baseado na última OS
   async getNextNumber() {
     try {
-      console.log(
-        "--- [DEBUG getNextNumber] Iniciando busca do último número ---"
-      );
       const ultimaOS = await OrdemServico.findOne({}, { numeroOS: 1 })
         .sort({ numeroOS: -1 })
         .collation({ locale: "en_US", numericOrdering: true });
 
       if (!ultimaOS || !ultimaOS.numeroOS) {
-        console.log(
-          "[DEBUG getNextNumber] Nenhuma OS encontrada, retornando 1000"
-        );
         return 1000;
       }
 
       const proximo = Number(ultimaOS.numeroOS) + 1;
-      console.log(
-        `[DEBUG getNextNumber] Última OS: ${ultimaOS.numeroOS}, Próximo sugerido: ${proximo}`
-      );
+
       return proximo;
     } catch (error) {
       console.error("### ERRO getNextNumber ###", error.message);
@@ -31,7 +23,7 @@ class OSService {
     }
   }
 
-  async create(dados, arquivos) {
+  async create(dados, arquivos, usuarioNome = "Sistema") {
     try {
       const [proximoEsperado, validacoes] = await Promise.all([
         this.getNextNumber(),
@@ -57,8 +49,19 @@ class OSService {
         situacao: "EM ABERTO",
         dataAbertura: new Date(),
       };
-
-      return await new OrdemServico(novaOSData).save();
+      const novaOS = await new OrdemServico(novaOSData).save();
+      try {
+        await Log.create({
+          usuario: usuarioNome,
+          acao: "CRIAÇÃO",
+          entidade: "OS",
+          detalhes: `Abriu a nova OS #${novaOS.numeroOS} para o setor ${novaOS.setor}.`,
+          registroId: novaOS._id,
+        });
+      } catch (logError) {
+        console.error("⚠️ Falha ao salvar log de criação:", logError.message);
+      }
+      return novaOS;
     } catch (error) {
       this.logDetailedError("CREATE", error);
       throw error;
@@ -66,7 +69,6 @@ class OSService {
   }
   async getOptions() {
     try {
-      console.log("--- [DEBUG getOptions] Iniciando consulta de listas ---");
       const [sDocs, solDocs, exeDocs, priDocs] = await Promise.all([
         Setor.find({}, "nome").sort({ nome: 1 }),
         User.find(
@@ -80,9 +82,6 @@ class OSService {
         Prioridade.find({}, "nome").sort({ nome: 1 }),
       ]);
 
-      console.log(
-        `[DEBUG getOptions] Retornando: ${sDocs.length} setores, ${solDocs.length} usuários.`
-      );
       return {
         setores: sDocs.map((d) => d.nome.toUpperCase()),
         solicitantes: solDocs.map((d) => d.nome.toUpperCase()),
@@ -96,20 +95,21 @@ class OSService {
     }
   }
 
-  async update(id, dados, arquivos) {
+  async update(id, dados, arquivos, usuarioNome = "Sistema") {
     try {
-      console.log(`--- [DEBUG UPDATE] Atualizando OS ID: ${id} ---`);
       const osParaAtualizar = await OrdemServico.findById(id);
       if (!osParaAtualizar) throw new Error("OS não encontrada.");
-
-      if (osParaAtualizar.situacao === "CONCLUÍDO")
+      if (osParaAtualizar.situacao === "CONCLUÍDO") {
         throw new Error("OS já CONCLUÍDA.");
-
+      }
       let camposParaAtualizar = {
         situacao: dados.situacao,
         executor: dados.executor,
       };
-
+      let logMensagem = `Editou a OS #${osParaAtualizar.numeroOS}.`;
+      if (dados.situacao && dados.situacao !== osParaAtualizar.situacao) {
+        logMensagem = `Alterou status da OS #${osParaAtualizar.numeroOS} de "${osParaAtualizar.situacao}" para "${dados.situacao}".`;
+      }
       if (dados.situacao === "EM PROCESSO") {
         camposParaAtualizar.descricaoProcesso = dados.descricaoProcesso;
         camposParaAtualizar.dataFechamento = null;
@@ -128,21 +128,36 @@ class OSService {
         }
       }
 
-      console.log(
-        "[DEBUG UPDATE] Campos a aplicar:",
-        JSON.stringify(camposParaAtualizar, null, 2)
-      );
-      return await OrdemServico.findByIdAndUpdate(
+      const osAtualizada = await OrdemServico.findByIdAndUpdate(
         id,
         { $set: camposParaAtualizar },
-        { new: true, runValidators: true }
+        {
+          returnDocument: "after",
+          runValidators: true,
+        }
       );
+
+      try {
+        await Log.create({
+          usuario: usuarioNome,
+          acao: "EDIÇÃO",
+          entidade: "OS",
+          detalhes: logMensagem,
+          registroId: id,
+        });
+      } catch (logError) {
+        console.error(
+          "⚠️ Falha ao salvar log (OS foi atualizada mesmo assim):",
+          logError.message
+        );
+      }
+
+      return osAtualizada;
     } catch (error) {
-      this.logDetailedError("UPDATE", error);
+      console.error("❌ Erro no processo de Update:", error.message);
       throw error;
     }
   }
-
   async read(query) {
     try {
       let filtros = {};
@@ -182,8 +197,6 @@ class OSService {
       const temFiltros = Object.keys(filtros).length > 0;
       const limite = temFiltros ? 0 : 100;
 
-      console.log("🔍 Filtros aplicados no Mongo:", JSON.stringify(filtros));
-
       return await OrdemServico.find(filtros)
         .sort({ numeroOS: -1 })
         .collation({ locale: "en_US", numericOrdering: true })
@@ -205,40 +218,78 @@ class OSService {
     }
   }
 
-  async delete(id) {
+  async delete(id, usuarioNome = "Sistema") {
     try {
-      console.log(`--- [DEBUG DELETE] Removendo OS ID: ${id} ---`);
-      const deletada = await OrdemServico.findByIdAndDelete(id);
-      if (!deletada) throw new Error("OS não encontrada");
-      return deletada;
+      const osParaDeletar = await OrdemServico.findById(id);
+
+      if (!osParaDeletar) {
+        throw new Error("Ordem de Serviço não encontrada.");
+      }
+
+      await OrdemServico.findByIdAndDelete(id);
+
+      try {
+        await Log.create({
+          usuario: usuarioNome,
+          acao: "EXCLUSÃO",
+          entidade: "OS",
+          detalhes: `APAGOU a OS #${osParaDeletar.numeroOS} (Solicitante: ${osParaDeletar.solicitante}).`,
+          registroId: id,
+        });
+      } catch (logError) {
+        console.error(
+          "⚠️ Erro ao registrar log de exclusão:",
+          logError.message
+        );
+      }
+
+      return { mensagem: "OS removida com sucesso" };
     } catch (error) {
       this.logDetailedError("DELETE", error);
       throw error;
     }
   }
-  async updateGeneric(id, dados) {
+  async updateGeneric(id, dados, usuarioNome = "Sistema") {
     try {
-      console.log(
-        `--- [DEBUG updateGeneric] Iniciando atualização genérica ---`
-      );
-      console.log(`ID alvo: ${id}`);
-      console.log(`Dados para injeção:`, JSON.stringify(dados, null, 2));
+      const osAntiga = await OrdemServico.findById(id);
+      if (!osAntiga) throw new Error("OS não encontrada.");
 
       const atualizado = await OrdemServico.findByIdAndUpdate(
         id,
         { $set: dados },
-        {
-          returnDocument: "after",
-          runValidators: true,
-        }
+        { returnDocument: "after", runValidators: true }
       );
 
-      if (!atualizado) {
-        console.warn(
-          `[DEBUG updateGeneric] Nenhuma OS encontrada para o ID: ${id}`
-        );
-      } else {
-        console.log(`[DEBUG updateGeneric] OS atualizada com sucesso!`);
+      try {
+        let detalhesArray = [];
+
+        Object.keys(dados).forEach((campo) => {
+          const valorAntigo = osAntiga[campo];
+          const valorNovo = dados[campo];
+
+          if (valorAntigo !== valorNovo) {
+            detalhesArray.push(
+              `${campo}: "${valorAntigo || "Vazio"}" ➔ "${valorNovo}"`
+            );
+          }
+        });
+
+        const mensagemLog =
+          detalhesArray.length > 0
+            ? `Edição rápida na OS #${
+                atualizado.numeroOS
+              }: ${detalhesArray.join(" | ")}`
+            : `Edição rápida na OS #${atualizado.numeroOS} (sem mudanças de valor).`;
+
+        await Log.create({
+          usuario: usuarioNome,
+          acao: "EDIÇÃO",
+          entidade: "OS",
+          detalhes: mensagemLog,
+          registroId: id,
+        });
+      } catch (logError) {
+        console.error("⚠️ Erro ao registrar log detalhado:", logError.message);
       }
 
       return atualizado;
@@ -258,6 +309,41 @@ class OSService {
     }
     if (error.stack) {
       console.error("Stack Trace:", error.stack);
+    }
+  }
+  async updatePecas(numeroOS, dados, usuarioNome = "Sistema") {
+    try {
+      const { peca, valorPeca, valorMaoDeObra } = dados;
+
+      const atualizado = await OrdemServico.findOneAndUpdate(
+        { numeroOS },
+        {
+          $set: {
+            pecasUtilizadas: peca,
+            valorPecas: Number(valorPeca),
+            valorMaoDeObra: Number(valorMaoDeObra),
+          },
+        },
+        { new: true }
+      );
+
+      if (!atualizado) throw new Error("Ordem de Serviço não encontrada.");
+
+      try {
+        await Log.create({
+          usuario: usuarioNome,
+          acao: "EDIÇÃO",
+          entidade: "OS",
+          detalhes: `Lançou custos na OS #${numeroOS}: Peça ${peca} (R$ ${valorPeca}) + MDO (R$ ${valorMaoDeObra}).`,
+          registroId: atualizado._id,
+        });
+      } catch (logErr) {
+        console.error("Erro ao logar peças:", logErr.message);
+      }
+
+      return atualizado;
+    } catch (error) {
+      throw error;
     }
   }
 }

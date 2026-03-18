@@ -6,11 +6,11 @@ class UserController extends GenericController {
     super(userService);
   }
 
-  // Método específico para tratar a requisição de senha
+  
   async updatePassword(req, res) {
     try {
       const { id } = req.params;
-      const { senhaAtual, novaSenha } = req.body; // Recebe os dois campos
+      const { senhaAtual, novaSenha } = req.body; 
 
       if (!senhaAtual || !novaSenha) {
         return res.status(400).json({ erro: "Preencha todos os campos." });
@@ -19,7 +19,7 @@ class UserController extends GenericController {
       await this.service.updatePassword(id, senhaAtual, novaSenha);
       return res.json({ mensagem: "Senha atualizada com sucesso!" });
     } catch (error) {
-      // O erro "A senha atual está incorreta" cairá aqui
+      
       return res.status(400).json({ erro: error.message });
     }
   }

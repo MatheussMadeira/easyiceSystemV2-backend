@@ -22,19 +22,15 @@ mongoose
 
 app.use("/api", routes);
 
-// --- MIDDLEWARE DE ERRO GLOBAL (ADICIONADO) ---
-// Este bloco captura o [object Object] e transforma em texto no log do Render
 app.use((err, req, res, next) => {
   console.error("======= 🔥 DETALHE DO ERRO GLOBAL =======");
   console.error("Mensagem:", err.message);
   console.error("Stack:", err.stack);
 
-  // Se o erro for do Multer, ele terá um 'code'
   if (err.code) {
     console.error("Código do Erro (Multer/Siste):", err.code);
   }
 
-  // Se houver campos de validação do Mongoose
   if (err.errors) {
     console.error("Erros de Validação:", JSON.stringify(err.errors, null, 2));
   }
@@ -44,7 +40,6 @@ app.use((err, req, res, next) => {
     detalhes: process.env.NODE_ENV === "development" ? err.stack : undefined,
   });
 });
-// ----------------------------------------------
 
 const PORT = 3001;
 app.listen(PORT, () => {

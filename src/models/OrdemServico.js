@@ -14,8 +14,11 @@ const OrdemServicoSchema = new mongoose.Schema(
     arquivoAbertura: { type: String },
     descricaoProcesso: { type: String },
     dataFechamento: { type: Date },
+
     pecasUtilizadas: { type: String },
     valorPecas: { type: Number, default: 0 },
+    valorMaoDeObra: { type: Number, default: 0 },
+
     observacoes: { type: String },
     arquivoFechamento: { type: String },
     descricaoFechamento: { type: String },
