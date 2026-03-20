@@ -106,6 +106,9 @@ class OSService {
         situacao: dados.situacao,
         executor: dados.executor,
       };
+      if (dados.dataPrevista) {
+        camposParaAtualizar.dataPrevista = dados.dataPrevista;
+      }
       let logMensagem = `Editou a OS #${osParaAtualizar.numeroOS}.`;
       if (dados.situacao && dados.situacao !== osParaAtualizar.situacao) {
         logMensagem = `Alterou status da OS #${osParaAtualizar.numeroOS} de "${osParaAtualizar.situacao}" para "${dados.situacao}".`;
