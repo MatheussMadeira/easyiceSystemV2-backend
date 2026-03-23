@@ -10,6 +10,7 @@ const prioridadeRoutes = require("./prioridadeRoutes");
 const osRoutes = require("./osRoutes");
 const authRoutes = require("./authRoutes");
 const logRoutes = require("./logRoutes");
+const servicoRoutes = require("./servicoRoutes");
 
 router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
@@ -17,5 +18,6 @@ router.use("/setores", setorRoutes);
 router.use("/prioridades", prioridadeRoutes);
 router.use("/os", osRoutes);
 router.use("/logs", logRoutes);
+router.use("/servico", servicoRoutes);
 
 module.exports = router;
