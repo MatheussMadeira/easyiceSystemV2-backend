@@ -48,6 +48,7 @@ class OSService {
         arquivoAbertura: arquivos?.arquivoAbertura?.[0]?.path || null,
         situacao: "EM ABERTO",
         dataAbertura: new Date(),
+        dataParaConcluir: null,
       };
       const novaOS = await new OrdemServico(novaOSData).save();
       try {
@@ -87,7 +88,13 @@ class OSService {
         solicitantes: solDocs.map((d) => d.nome.toUpperCase()),
         executores: exeDocs.map((d) => d.nome.toUpperCase()),
         prioridades: priDocs.map((d) => d.nome.toUpperCase()),
-        situacoes: ["EM ABERTO", "EM PROCESSO", "CONCLUÍDO", "CANCELADA"],
+        situacoes: [
+          "EM ABERTO",
+          "EM PROCESSO",
+          "PRONTO PARA FINALIZAR",
+          "CONCLUÍDO",
+          "CANCELADA",
+        ],
       };
     } catch (error) {
       this.logDetailedError("GET_OPTIONS", error);
@@ -116,6 +123,11 @@ class OSService {
       if (dados.situacao === "EM PROCESSO") {
         camposParaAtualizar.descricaoProcesso = dados.descricaoProcesso;
         camposParaAtualizar.dataFechamento = null;
+      } else if (dados.situacao === "PRONTO PARA FINALIZAR") {
+        if (!osParaAtualizar.dataParaConcluir) {
+          camposParaAtualizar.dataParaConcluir = new Date();
+        }
+        camposParaAtualizar.descricaoProcesso = dados.descricaoProcesso;
       } else if (dados.situacao === "CONCLUÍDO") {
         camposParaAtualizar = {
           ...camposParaAtualizar,
