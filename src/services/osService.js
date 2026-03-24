@@ -93,7 +93,6 @@ class OSService {
           "EM PROCESSO",
           "PRONTO PARA FINALIZAR",
           "CONCLUÍDO",
-          "CANCELADA",
         ],
       };
     } catch (error) {
@@ -123,7 +122,7 @@ class OSService {
       if (dados.situacao === "EM PROCESSO") {
         camposParaAtualizar.descricaoProcesso = dados.descricaoProcesso;
         camposParaAtualizar.dataFechamento = null;
-      } else if (dados.situacao === "PRONTO PARA FINALIZAR") {
+      } else if (dados.situacao === "PRONTO PARA FINALIZAÇÃO") {
         if (!osParaAtualizar.dataParaConcluir) {
           camposParaAtualizar.dataParaConcluir = new Date();
         }
