@@ -24,7 +24,7 @@ class OSService {
     }
   }
 
-  async create(dados, arquivos, usuarioNome = "Sistema") {
+  async create(dados, arquivos, usuarioNome = "Sistema", userRoles = []) {
     try {
       const eAdmin = userRoles.includes("ADMIN");
       const solicitanteFinal = eAdmin ? dados.solicitante : usuarioNome;
