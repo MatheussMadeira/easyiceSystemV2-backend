@@ -8,6 +8,7 @@ const UserSchema = new mongoose.Schema({
     enum: ["SOLICITANTE", "EXECUTOR", "ADMIN"],
     default: ["SOLICITANTE"],
   },
+  whatsapp: { type: String },
   password: { type: String, required: true },
   ativo: { type: Boolean, default: true },
 });

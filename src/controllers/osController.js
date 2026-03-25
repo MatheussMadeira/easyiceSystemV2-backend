@@ -7,7 +7,14 @@ class OSController {
   async create(req, res) {
     try {
       const usuarioLogado = req.usuario?.nome || "Sistema";
-      const novaOS = await osService.create(req.body, req.files, usuarioLogado);
+      const funcoesUsuario = req.usuario?.funcoes || [];
+
+      const novaOS = await osService.create(
+        req.body,
+        req.files,
+        usuarioLogado,
+        funcoesUsuario
+      );
 
       return res.status(201).json(novaOS);
     } catch (error) {

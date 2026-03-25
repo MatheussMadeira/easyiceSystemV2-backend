@@ -1,6 +1,6 @@
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs"); // 1. Importe o bcrypt
+const bcrypt = require("bcryptjs");
 require("dotenv").config();
 
 async function login(req, res) {
@@ -9,12 +9,10 @@ async function login(req, res) {
   try {
     const user = await User.findOne({ email });
 
-    // 2. Verifica se o usuário existe
     if (!user) {
       return res.status(401).json({ error: "E-mail ou senha inválidos" });
     }
 
-    // 3. Compara a senha digitada com o Hash do banco
     const senhaValida = await bcrypt.compare(password, user.password);
 
     if (!senhaValida) {
@@ -29,7 +27,6 @@ async function login(req, res) {
       { expiresIn: "8h" }
     );
 
-    
     res.json({
       token,
       user: {
@@ -37,6 +34,7 @@ async function login(req, res) {
         nome: user.nome,
         email: user.email,
         funcoes: user.funcoes,
+        whatsapp: user.whatsapp,
       },
     });
   } catch (error) {

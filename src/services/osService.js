@@ -2,6 +2,7 @@ const OrdemServico = require("../models/OrdemServico");
 const User = require("../models/User");
 const Log = require("../models/Log");
 const { Setor, Prioridade } = require("../models/GenericName");
+const { enviarZap } = require("../services/zapiService");
 
 class OSService {
   async getNextNumber() {
@@ -25,11 +26,13 @@ class OSService {
 
   async create(dados, arquivos, usuarioNome = "Sistema") {
     try {
+      const eAdmin = userRoles.includes("ADMIN");
+      const solicitanteFinal = eAdmin ? dados.solicitante : usuarioNome;
       const [proximoEsperado, validacoes] = await Promise.all([
         this.getNextNumber(),
         Promise.all([
           Setor.exists({ nome: dados.setor }),
-          User.exists({ nome: dados.solicitante }),
+          User.exists({ nome: solicitanteFinal }),
           Prioridade.exists({ nome: dados.prioridade }),
         ]),
       ]);
@@ -44,13 +47,42 @@ class OSService {
 
       const novaOSData = {
         ...dados,
+        solicitante: solicitanteFinal,
         numeroOS: proximoEsperado,
         arquivoAbertura: arquivos?.arquivoAbertura?.[0]?.path || null,
         situacao: "EM ABERTO",
         dataAbertura: new Date(),
         dataParaConcluir: null,
       };
+
       const novaOS = await new OrdemServico(novaOSData).save();
+      const prioridadeCurta = novaOS.prioridade.toUpperCase();
+      const linkFoto = novaOS.arquivoAbertura
+        ? `\n🖼️ *FOTO DO PROBLEMA:* ${novaOS.arquivoAbertura}`
+        : "";
+      const texto =
+        `🚨 *NOVA ORDEM DE SERVIÇO - #${novaOS.numeroOS}* 🚨\n\n` +
+        `🔥 *PRIORIDADE:* ${prioridadeCurta}\n` +
+        `----------------------------------\n` +
+        `📍 *SETOR:* ${novaOS.setor}\n` +
+        `👤 *SOLICITANTE:* ${novaOS.solicitante}\n` +
+        `🛠️ *EXECUTOR:* ${novaOS.executor || "A DEFINIR"}\n` +
+        `⚙️ *EQUIPAMENTO:* ${novaOS.equipamento}\n\n` +
+        `📝 *DESCRIÇÃO DO PROBLEMA:* \n${novaOS.descricaoAbertura}\n` +
+        `----------------------------------` +
+        linkFoto +
+        `\n\n` +
+        `📅 *DATA:* ${new Date().toLocaleDateString()} às ${new Date().toLocaleTimeString(
+          [],
+          { hour: "2-digit", minute: "2-digit" }
+        )}`;
+
+      enviarZap(process.env.ZAPI_GROUP_ABERTURA, texto);
+
+      const executorDoc = await User.findOne({ nome: novaOS.executor });
+      if (executorDoc?.whatsapp) {
+        enviarZap(executorDoc.whatsapp, texto);
+      }
       try {
         await Log.create({
           usuario: usuarioNome,
@@ -91,7 +123,7 @@ class OSService {
         situacoes: [
           "EM ABERTO",
           "EM PROCESSO",
-          "PRONTO PARA FINALIZAR",
+          "PRONTO PARA FINALIZAÇÃO",
           "CONCLUÍDO",
         ],
       };
@@ -151,6 +183,77 @@ class OSService {
         }
       );
 
+      const solicitanteDoc = await User.findOne({
+        nome: osAtualizada.solicitante,
+      });
+      const foneSolicitante = solicitanteDoc?.whatsapp;
+
+      if (
+        dados.situacao === "EM PROCESSO" &&
+        osParaAtualizar.situacao !== "EM PROCESSO"
+      ) {
+        const dataFormatada = dados.dataPrevista
+          ? new Date(dados.dataPrevista).toLocaleDateString("pt-BR", {
+              timeZone: "UTC",
+            })
+          : "Não informada";
+
+        const msgProcesso =
+          `👨‍🔧 *SUA OS #${osAtualizada.numeroOS} ESTÁ EM PROCESSO* \n\n` +
+          `🛠️ *TÉCNICO:* ${osAtualizada.executor}\n` +
+          `⚙️ *EQUIPAMENTO:* ${osAtualizada.equipamento}\n` +
+          `📅 *PREVISÃO DE ENTREGA:* ${dataFormatada}\n` +
+          `----------------------------------\n` +
+          `💬 *OBSERVAÇÕES:* ${
+            dados.descricaoProcesso || "Equipamento em análise técnica."
+          }`;
+        if (foneSolicitante) enviarZap(foneSolicitante, msgProcesso);
+      }
+      if (
+        dados.situacao === "PRONTO PARA FINALIZAÇÃO" &&
+        osParaAtualizar.situacao !== "PRONTO PARA FINALIZAÇÃO"
+      ) {
+        const msgPronto =
+          `✅ *SUA OS #${osAtualizada.numeroOS} ESTÁ PRONTA PARA CONFERÊNCIA* 🛠️\n\n` +
+          `👤 *SOLICITANTE:* ${osAtualizada.solicitante}\n` +
+          `⚙️ *EQUIPAMENTO:* ${osAtualizada.equipamento}\n` +
+          `----------------------------------\n` +
+          `📝 *STATUS:* O serviço foi concluído e os custos foram lançados.\n\n` +
+          `👉 *POR FAVOR:* Acesse o sistema para conferir os valores e finalizar a ordem.`;
+        if (foneSolicitante) enviarZap(foneSolicitante, msgPronto);
+      }
+      if (
+        dados.situacao === "CONCLUÍDO" &&
+        osParaAtualizar.situacao !== "CONCLUÍDO"
+      ) {
+        const total =
+          (Number(dados.valorPecas) || 0) +
+          (Number(osAtualizada.valorMaoDeObra) || 0);
+        const msgFinalizada =
+          `✅ *ORDEM DE SERVIÇO FINALIZADA - #${osAtualizada.numeroOS}* ✅\n\n` +
+          `⚙️ *EQUIPAMENTO:* ${osAtualizada.equipamento}\n` +
+          `----------------------------------\n` +
+          `🛠️ *EXECUTOR:* ${osAtualizada.executor}\n` +
+          `👤 *SOLICITANTE:* ${osAtualizada.solicitante}\n` +
+          `📦 *PEÇAS UTILIZADAS:* ${dados.pecasUtilizadas || "Nenhuma"}\n\n` +
+          `💰 *VALOR TOTAL:* R$ ${total.toFixed(2)}\n` +
+          `📝 *RELATÓRIO TÉCNICO:* \n${
+            dados.descricaoFechamento ||
+            "Serviço concluído conforme solicitado."
+          }\n` +
+          `----------------------------------` +
+          (osAtualizada.arquivoFechamento
+            ? `\n🖼️ *Link da Foto:* ${osAtualizada.arquivoFechamento}`
+            : "") +
+          `\n\n📅 *FINALIZADA EM:* ${new Date().toLocaleDateString(
+            "pt-BR"
+          )} às ${new Date().toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}`;
+
+        enviarZap(process.env.ZAPI_GROUP_FECHAMENTO, msgFinalizada);
+      }
       try {
         await Log.create({
           usuario: usuarioNome,
