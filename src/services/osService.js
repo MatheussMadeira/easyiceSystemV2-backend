@@ -55,6 +55,12 @@ class OSService {
         dataParaConcluir: null,
       };
 
+      const agora = new Date();
+      const dataFormatada = agora.toLocaleDateString("pt-BR");
+      const horaFormatada = agora.toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
       const novaOS = await new OrdemServico(novaOSData).save();
       const prioridadeCurta = novaOS.prioridade.toUpperCase();
       const linkFoto = novaOS.arquivoAbertura
@@ -72,10 +78,7 @@ class OSService {
         `----------------------------------` +
         linkFoto +
         `\n\n` +
-        `📅 *DATA:* ${new Date().toLocaleDateString()} às ${new Date().toLocaleTimeString(
-          [],
-          { hour: "2-digit", minute: "2-digit" }
-        )}`;
+        `📅 *DATA:* ${dataFormatada} às ${horaFormatada}`;
 
       enviarZap(process.env.ZAPI_GROUP_ABERTURA, texto);
 
@@ -203,6 +206,7 @@ class OSService {
           `🛠️ *TÉCNICO:* ${osAtualizada.executor}\n` +
           `⚙️ *EQUIPAMENTO:* ${osAtualizada.equipamento}\n` +
           `📅 *PREVISÃO DE ENTREGA:* ${dataFormatada}\n` +
+          `📝 *PROBLEMA INICIAL:* \n${osAtualizada.descricaoAbertura}\n` +
           `----------------------------------\n` +
           `💬 *OBSERVAÇÕES:* ${
             dados.descricaoProcesso || "Equipamento em análise técnica."
@@ -215,7 +219,8 @@ class OSService {
       ) {
         const msgPronto =
           `✅ *SUA OS #${osAtualizada.numeroOS} ESTÁ PRONTA PARA CONFERÊNCIA* 🛠️\n\n` +
-          `👤 *SOLICITANTE:* ${osAtualizada.solicitante}\n` +
+          `👤 *EXECUTOR:* ${osAtualizada.executor}\n` +
+          `📝 *PROBLEMA RESOLVIDO:* \n${osAtualizada.descricaoAbertura}\n` +
           `⚙️ *EQUIPAMENTO:* ${osAtualizada.equipamento}\n` +
           `----------------------------------\n` +
           `📝 *STATUS:* O serviço foi concluído e os custos foram lançados.\n\n` +
