@@ -60,6 +60,7 @@ class OSService {
       const horaFormatada = agora.toLocaleTimeString("pt-BR", {
         hour: "2-digit",
         minute: "2-digit",
+        timeZone: "America/Sao_Paulo",
       });
       const novaOS = await new OrdemServico(novaOSData).save();
       const prioridadeCurta = novaOS.prioridade.toUpperCase();
@@ -231,6 +232,15 @@ class OSService {
         dados.situacao === "CONCLUÍDO" &&
         osParaAtualizar.situacao !== "CONCLUÍDO"
       ) {
+        const agoraFinalizada = new Date();
+        const dataFinalizada = agoraFinalizada.toLocaleDateString("pt-BR", {
+          timeZone: "America/Sao_Paulo",
+        });
+        const horaFinalizada = agoraFinalizada.toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: "America/Sao_Paulo",
+        });
         const total =
           (Number(dados.valorPecas) || 0) +
           (Number(osAtualizada.valorMaoDeObra) || 0);
@@ -250,12 +260,7 @@ class OSService {
           (osAtualizada.arquivoFechamento
             ? `\n🖼️ *Link da Foto:* ${osAtualizada.arquivoFechamento}`
             : "") +
-          `\n\n📅 *FINALIZADA EM:* ${new Date().toLocaleDateString(
-            "pt-BR"
-          )} às ${new Date().toLocaleTimeString("pt-BR", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}`;
+          `\n\n📅 *FINALIZADA EM:* ${dataFinalizada} às ${horaFinalizada}`;
 
         enviarZap(process.env.ZAPI_GROUP_FECHAMENTO, msgFinalizada);
       }
@@ -315,6 +320,19 @@ class OSService {
           { solicitante: { $regex: termo, $options: "i" } },
           { descricaoAbertura: { $regex: termo, $options: "i" } },
         ];
+      }
+      if (query.dataInicio || query.dataFim) {
+        filtros.createdAt = {};
+
+        if (query.dataInicio) {
+          filtros.createdAt.$gte = new Date(query.dataInicio);
+        }
+
+        if (query.dataFim) {
+          const fimDoDia = new Date(query.dataFim);
+          fimDoDia.setHours(23, 59, 59, 999);
+          filtros.createdAt.$lte = fimDoDia;
+        }
       }
       const limitDinamico = query.limit ? parseInt(query.limit) : 100;
       const temFiltros = Object.keys(filtros).length > 0;
