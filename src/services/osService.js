@@ -334,7 +334,7 @@ class OSService {
           filtros.createdAt.$lte = fimDoDia;
         }
       }
-      const limitDinamico = query.limit ? parseInt(query.limit) : 100;
+      const limitDinamico = query.limit ? parseInt(query.limit) : 150000;
       const temFiltros = Object.keys(filtros).length > 0;
       const limiteFinal = temFiltros && !query.limit ? 0 : limitDinamico;
 
