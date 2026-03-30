@@ -148,6 +148,17 @@ class OSService {
         situacao: dados.situacao,
         executor: dados.executor,
       };
+      if (dados.valorMaoDeObra !== undefined) {
+        const vInterna = Number(dados.valorMaoDeObra) || 0;
+        camposParaAtualizar.valorMaoDeObra = vInterna;
+        if (vInterna > 0) camposParaAtualizar.valorMaoDeObraExterna = 0;
+      }
+
+      if (dados.valorMaoDeObraExterna !== undefined) {
+        const vExterna = Number(dados.valorMaoDeObraExterna) || 0;
+        camposParaAtualizar.valorMaoDeObraExterna = vExterna;
+        if (vExterna > 0) camposParaAtualizar.valorMaoDeObra = 0;
+      }
       if (dados.dataPrevista) {
         camposParaAtualizar.dataPrevista = dados.dataPrevista;
       }
@@ -226,7 +237,7 @@ class OSService {
           `----------------------------------\n` +
           `📝 *STATUS:* O serviço foi concluído e os custos foram lançados.\n\n` +
           `👉 *POR FAVOR:* Acesse o sistema para conferir os valores e finalizar a ordem.`;
-        if (foneSolicitante) enviarZap(foneSolicitante, msgPronto);
+        // if (foneSolicitante) enviarZap(foneSolicitante, msgPronto);
       }
       if (
         dados.situacao === "CONCLUÍDO" &&
@@ -242,8 +253,13 @@ class OSService {
           timeZone: "America/Sao_Paulo",
         });
         const total =
-          (Number(dados.valorPecas) || 0) +
-          (Number(osAtualizada.valorMaoDeObra) || 0);
+          (Number(osAtualizada.valorPecas) || 0) +
+          (Number(osAtualizada.valorMaoDeObra) || 0) +
+          (Number(osAtualizada.valorMaoDeObraExterna) || 0);
+        const tipoMdoTexto =
+          osAtualizada.valorMaoDeObraExterna > 0
+            ? "Externa (Terceirizado)"
+            : "Interna";
         const msgFinalizada =
           `✅ *ORDEM DE SERVIÇO FINALIZADA - #${osAtualizada.numeroOS}* ✅\n\n` +
           `⚙️ *EQUIPAMENTO:* ${osAtualizada.equipamento}\n` +
@@ -251,6 +267,7 @@ class OSService {
           `🛠️ *EXECUTOR:* ${osAtualizada.executor}\n` +
           `👤 *SOLICITANTE:* ${osAtualizada.solicitante}\n` +
           `📦 *PEÇAS UTILIZADAS:* ${dados.pecasUtilizadas || "Nenhuma"}\n\n` +
+          `🔧 *TIPO MÃO DE OBRA:* ${tipoMdoTexto}\n\n` +
           `💰 *VALOR TOTAL:* R$ ${total.toFixed(2)}\n` +
           `📝 *RELATÓRIO TÉCNICO:* \n${
             dados.descricaoFechamento ||

@@ -21,6 +21,7 @@ const OrdemServicoSchema = new mongoose.Schema(
     pecasUtilizadas: { type: String },
     valorPecas: { type: Number, default: 0 },
     valorMaoDeObra: { type: Number, default: 0 },
+    valorMaoDeObraExterna: { type: Number, default: 0 },
     dataParaConcluir: {
       type: Date,
       required: false,

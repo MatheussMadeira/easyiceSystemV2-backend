@@ -62,14 +62,17 @@ class OSController {
   async update(req, res) {
     try {
       const usuarioLogado = req.usuario?.nome || "Sistema";
+
       const osAtualizada = await osService.update(
         req.params.id,
         req.body,
         req.files,
         usuarioLogado
       );
+
       return res.json(osAtualizada);
     } catch (error) {
+      console.error("❌ Erro no Controller:", error.message);
       return res.status(400).json({ erro: error.message });
     }
   }
