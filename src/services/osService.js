@@ -237,7 +237,7 @@ class OSService {
           `----------------------------------\n` +
           `📝 *STATUS:* O serviço foi concluído e os custos foram lançados.\n\n` +
           `👉 *POR FAVOR:* Acesse o sistema para conferir os valores e finalizar a ordem.`;
-        // if (foneSolicitante) enviarZap(foneSolicitante, msgPronto);
+         if (foneSolicitante) enviarZap(foneSolicitante, msgPronto);
       }
       if (
         dados.situacao === "CONCLUÍDO" &&
