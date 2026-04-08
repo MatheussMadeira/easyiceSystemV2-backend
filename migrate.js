@@ -1,25 +1,65 @@
-const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
-const User = require("./src/models/User"); 
 require("dotenv").config();
+const mongoose = require("mongoose");
+const xlsx = require("xlsx");
+const Equipamento = require("./src/models/Equipamento");
 
-async function migrarSenhas() {
-  await mongoose.connect(process.env.MONGO_URI); // Use sua string de conexão
+async function rodarCarga() {
+  try {
+    await mongoose.connect(process.env.MONGO_URI);
+    console.log("🔌 Conectado ao banco de dados...");
 
-  const usuarios = await User.find();
+    const workbook = xlsx.readFile("equipamento.xlsx");
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const dadosExcel = xlsx.utils.sheet_to_json(sheet, { range: 1 });
 
-  for (let user of usuarios) {
-    // Só criptografa se a senha ainda não for um hash (bcrypt hashes começam com $2b$)
-    if (!user.password.startsWith("$2b$")) {
-      const salt = await bcrypt.genSalt(10);
-      user.password = await bcrypt.hash(user.password, salt);
-      await user.save();
-      console.log(`Senha de ${user.nome} atualizada!`);
+    const equipamentosParaSalvar = [];
+
+    for (const row of dadosExcel) {
+      const chaves = Object.keys(row);
+
+      const numero = String(row[chaves[0]] || "").trim();
+      let setor = String(row[chaves[1]] || "").trim();
+      let nome = String(row[chaves[2]] || "").trim();
+
+      if (numero && setor && nome) {
+        const setorMinusculo = setor.toLowerCase();
+        if (
+          setorMinusculo.includes("camara") ||
+          setorMinusculo.includes("câmara")
+        ) {
+          const conteudoParenteses = setor.match(/\((.*?)\)/);
+
+          if (conteudoParenteses && conteudoParenteses[1]) {
+            const setorReal = conteudoParenteses[1].trim();
+
+            nome = `Câmara - ${nome}`;
+            setor = setorReal;
+          }
+        }
+
+        setor = setor.charAt(0).toUpperCase() + setor.slice(1);
+
+        equipamentosParaSalvar.push({ numero, setor, nome });
+      }
     }
-  }
 
-  console.log("Migração concluída!");
-  process.exit();
+    console.log(
+      `📊 ${equipamentosParaSalvar.length} equipamentos lidos e tratados.`
+    );
+
+    console.log("🧹 Limpando base de equipamentos antiga...");
+    await Equipamento.deleteMany({});
+
+    console.log("🚀 Inserindo equipamentos limpos e padronizados...");
+    await Equipamento.insertMany(equipamentosParaSalvar);
+
+    console.log("✅ Carga finalizada com sucesso!");
+    process.exit(0);
+  } catch (err) {
+    console.error("❌ Erro:", err.message);
+    process.exit(1);
+  }
 }
 
-migrarSenhas();
+rodarCarga();

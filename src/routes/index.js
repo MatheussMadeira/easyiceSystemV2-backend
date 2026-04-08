@@ -1,9 +1,10 @@
 const express = require("express");
 const router = express.Router();
+
 router.get("/public/ping", (req, res) => {
   res.status(200).json({ status: "ok", message: "Servidor ativo!" });
 });
-
+const equipamentoRoutes = require("./equipamentoRoutes");
 const setorRoutes = require("./setorRoutes");
 const userRoutes = require("./userRoutes");
 const prioridadeRoutes = require("./prioridadeRoutes");
@@ -21,5 +22,6 @@ router.use("/os", osRoutes);
 router.use("/logs", logRoutes);
 router.use("/servico", servicoRoutes);
 router.use("/whatsapp", zapiRoutes);
+router.use("/equipamentos", equipamentoRoutes);
 
 module.exports = router;
