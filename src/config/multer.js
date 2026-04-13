@@ -17,7 +17,8 @@ const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
     folder: "easyice_uploads",
-    allowed_formats: ["jpg", "png", "jpeg"],
+    resource_type: "auto",
+    allowed_formats: ["jpg", "png", "jpeg", "mp4", "mov", "avi"],
     public_id: (req, file) => {
       const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
       return uniqueSuffix;
@@ -25,6 +26,9 @@ const storage = new CloudinaryStorage({
   },
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 50 * 1024 * 1024 },
+});
 
 module.exports = upload;

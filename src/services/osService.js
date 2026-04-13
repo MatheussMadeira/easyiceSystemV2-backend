@@ -81,12 +81,12 @@ class OSService {
         `\n\n` +
         `📅 *DATA:* ${dataFormatada} às ${horaFormatada}`;
 
-      enviarZap(process.env.ZAPI_GROUP_ABERTURA, texto);
+      // enviarZap(process.env.ZAPI_GROUP_ABERTURA, texto);
 
-      const executorDoc = await User.findOne({ nome: novaOS.executor });
-      if (executorDoc?.whatsapp) {
-        enviarZap(executorDoc.whatsapp, texto);
-      }
+      // const executorDoc = await User.findOne({ nome: novaOS.executor });
+      // if (executorDoc?.whatsapp) {
+      //   enviarZap(executorDoc.whatsapp, texto);
+      // }
       try {
         await Log.create({
           usuario: usuarioNome,
