@@ -11,6 +11,8 @@ const UserSchema = new mongoose.Schema({
   whatsapp: { type: String },
   password: { type: String, required: true },
   ativo: { type: Boolean, default: true },
+  resetCode: { type: String, default: null },
+  resetCodeExpiry: { type: Date, default: null },
 });
 
 module.exports = mongoose.model("User", UserSchema);
