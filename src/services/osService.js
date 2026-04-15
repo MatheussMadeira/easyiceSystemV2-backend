@@ -169,6 +169,13 @@ class OSService {
       if (dados.situacao === "EM PROCESSO") {
         camposParaAtualizar.descricaoProcesso = dados.descricaoProcesso;
         camposParaAtualizar.dataFechamento = null;
+
+        if (
+          osParaAtualizar.situacao === "PRONTO PARA FINALIZAÇÃO" &&
+          dados.motivoRejeicao
+        ) {
+          camposParaAtualizar.motivoRejeicao = dados.motivoRejeicao;
+        }
       } else if (dados.situacao === "PRONTO PARA FINALIZAÇÃO") {
         if (!osParaAtualizar.dataParaConcluir) {
           camposParaAtualizar.dataParaConcluir = new Date();
@@ -182,7 +189,27 @@ class OSService {
           descricaoFechamento: dados.descricaoFechamento,
           valorPecas: Number(dados.valorPecas) || 0,
         };
+        if (
+          dados.situacao === "EM PROCESSO" &&
+          osParaAtualizar.situacao === "PRONTO PARA FINALIZAÇÃO" &&
+          dados.motivoRejeicao
+        ) {
+          const executorDoc = await User.findOne({
+            nome: osAtualizada.executor,
+          });
+          if (executorDoc?.whatsapp) {
+            const msgRejeicao =
+              `❌ *OS #${osAtualizada.numeroOS} FOI DEVOLVIDA PARA REEXECUÇÃO* ❌\n\n` +
+              `👤 *SOLICITANTE:* ${osAtualizada.solicitante}\n` +
+              `⚙️ *EQUIPAMENTO:* ${osAtualizada.equipamento}\n` +
+              `📍 *SETOR:* ${osAtualizada.setor}\n` +
+              `----------------------------------\n` +
+              `💬 *MOTIVO DA DEVOLUÇÃO:*\n${dados.motivoRejeicao}\n\n` +
+              `👉 Por favor, verifique o serviço e atualize a OS novamente.`;
 
+            enviarZap(executorDoc.whatsapp, msgRejeicao);
+          }
+        }
         if (arquivos?.arquivoFechamento?.[0]?.path) {
           camposParaAtualizar.arquivoFechamento =
             arquivos.arquivoFechamento[0].path;

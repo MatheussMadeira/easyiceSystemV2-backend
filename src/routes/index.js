@@ -13,6 +13,7 @@ const authRoutes = require("./authRoutes");
 const logRoutes = require("./logRoutes");
 const servicoRoutes = require("./servicoRoutes");
 const zapiRoutes = require("./zapiRoutes");
+const broadcastRoutes = require("./broadcastRoutes");
 
 router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
@@ -23,5 +24,6 @@ router.use("/logs", logRoutes);
 router.use("/servico", servicoRoutes);
 router.use("/whatsapp", zapiRoutes);
 router.use("/equipamentos", equipamentoRoutes);
+router.use("/broadcast", broadcastRoutes);
 
 module.exports = router;
