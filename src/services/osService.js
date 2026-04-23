@@ -77,13 +77,13 @@ class OSService {
       });
 
       console.log(
-        `✅ OS preventiva #${novaOS.numeroOS} criada para: ${servico.nome}`
+        `✅ OS preventiva #${novaOS.numeroOS} criada para: ${servico.nome}`,
       );
       return novaOS;
     } catch (error) {
       console.error(
         `❌ Erro ao criar OS automática para ${servico.nome}:`,
-        error.message
+        error.message,
       );
       throw error;
     }
@@ -105,7 +105,7 @@ class OSService {
 
       if (osAberta) {
         console.log(
-          `⏭️ Pulando "${servico.nome}" — OS #${osAberta.numeroOS} ainda pendente`
+          `⏭️ Pulando "${servico.nome}" — OS #${osAberta.numeroOS} ainda pendente`,
         );
         continue;
       }
@@ -203,11 +203,11 @@ class OSService {
         Setor.find({}, "nome").sort({ nome: 1 }),
         User.find(
           { funcoes: { $in: ["SOLICITANTE", "ADMIN"] }, ativo: true },
-          "nome"
+          "nome",
         ).sort({ nome: 1 }),
         User.find(
           { funcoes: { $in: ["EXECUTOR", "ADMIN"] }, ativo: true },
-          "nome"
+          "nome",
         ).sort({ nome: 1 }),
         Prioridade.find({}, "nome").sort({ nome: 1 }),
       ]);
@@ -315,7 +315,7 @@ class OSService {
         {
           returnDocument: "after",
           runValidators: true,
-        }
+        },
       );
 
       const solicitanteDoc = await User.findOne({
@@ -400,6 +400,20 @@ class OSService {
           `\n\n📅 *FINALIZADA EM:* ${dataFinalizada} às ${horaFinalizada}`;
 
         enviarZap(process.env.ZAPI_GROUP_FECHAMENTO, msgFinalizada);
+        if (
+          osParaAtualizar.tipo === "PREVENTIVA" ||
+          osParaAtualizar.servicoFrequenteId
+        ) {
+          console.log(
+            `🔄 OS preventiva #${osAtualizada.numeroOS} concluída — verificando próxima criação...`,
+          );
+          this.processarServicosFrequentes().catch((err) =>
+            console.error(
+              "⚠️ Erro ao processar serviços após conclusão:",
+              err.message,
+            ),
+          );
+        }
       }
       try {
         await Log.create({
@@ -412,7 +426,7 @@ class OSService {
       } catch (logError) {
         console.error(
           "⚠️ Falha ao salvar log (OS foi atualizada mesmo assim):",
-          logError.message
+          logError.message,
         );
       }
 
@@ -517,7 +531,7 @@ class OSService {
       } catch (logError) {
         console.error(
           "⚠️ Erro ao registrar log de exclusão:",
-          logError.message
+          logError.message,
         );
       }
 
@@ -535,7 +549,7 @@ class OSService {
       const atualizado = await OrdemServico.findByIdAndUpdate(
         id,
         { $set: dados },
-        { returnDocument: "after", runValidators: true }
+        { returnDocument: "after", runValidators: true },
       );
 
       try {
@@ -547,7 +561,7 @@ class OSService {
 
           if (valorAntigo !== valorNovo) {
             detalhesArray.push(
-              `${campo}: "${valorAntigo || "Vazio"}" ➔ "${valorNovo}"`
+              `${campo}: "${valorAntigo || "Vazio"}" ➔ "${valorNovo}"`,
             );
           }
         });
@@ -582,7 +596,7 @@ class OSService {
     if (error.errors) {
       console.error(
         "Erros de Validação (Mongoose):",
-        JSON.stringify(error.errors, null, 2)
+        JSON.stringify(error.errors, null, 2),
       );
     }
     if (error.stack) {
@@ -602,7 +616,7 @@ class OSService {
             valorMaoDeObra: Number(valorMaoDeObra),
           },
         },
-        { new: true }
+        { new: true },
       );
 
       if (!atualizado) throw new Error("Ordem de Serviço não encontrada.");
