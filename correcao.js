@@ -1,64 +1,38 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
-const Equipamento = require("./src/models/Equipamento");
-const { Setor } = require("./src/models/GenericName");
+const XLSX = require("xlsx");
+const path = require("path");
 
-const normalizar = (texto) =>
-  texto
-    ? texto
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .trim()
-    : "";
+const Equipamento = mongoose.model(
+  "Equipamento",
+  new mongoose.Schema({}, { strict: false })
+);
 
-async function rodarAuditoria() {
-  try {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log("🔌 Conectado ao banco para Auditoria Inteligente...\n");
+async function exportar() {
+  await mongoose.connect(process.env.MONGO_URI);
 
-    const listaSetoresBanco = await Setor.find({});
-    const setoresValidosNormalizados = listaSetoresBanco.map((s) =>
-      normalizar(s.nome)
-    );
+  const dados = await Equipamento.find(
+    {},
+    { numero: 1, nome: 1, setor: 1, _id: 0 }
+  )
+    .sort({ numero: 1 })
+    .collation({ locale: "en_US", numericOrdering: true });
 
-    console.log(
-      `📋 Setores oficiais (Normalizados): [${setoresValidosNormalizados.join(
-        ", "
-      )}]`
-    );
-    console.log("--------------------------------------------------\n");
+  const linhas = dados.map((d) => ({
+    Número: d.numero,
+    Nome: d.nome,
+    Setor: d.setor,
+  }));
 
-    const todosEquipamentos = await Equipamento.find({});
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(linhas);
+  XLSX.utils.book_append_sheet(wb, ws, "Equipamentos");
 
-    const intrusos = todosEquipamentos.filter((maq) => {
-      const setorMaqNormalizado = normalizar(maq.setor);
-      return !setoresValidosNormalizados.includes(setorMaqNormalizado);
-    });
+  const caminho = path.join(__dirname, "equipamentos_export.xlsx");
+  XLSX.writeFile(wb, caminho);
 
-    if (intrusos.length === 0) {
-      console.log(
-        "✅ TUDO LIMPO! Todos os equipamentos batem com os setores oficiais."
-      );
-    } else {
-      console.log(
-        `🚨 ENCONTRADOS ${intrusos.length} EQUIPAMENTOS COM SETOR FORA DO PADRÃO:\n`
-      );
-
-      intrusos.forEach((maq) => {
-        console.log(`- [Nº ${maq.numero}] ${maq.nome}`);
-        console.log(`  Setor no Banco: "${maq.setor}"`);
-        console.log(
-          `  Motivo: Não bate com nenhum setor oficial (mesmo ignorando acentos).\n`
-        );
-      });
-    }
-
-    process.exit(0);
-  } catch (err) {
-    console.error("❌ Erro na auditoria:", err.message);
-    process.exit(1);
-  }
+  console.log(`✅ ${dados.length} equipamentos exportados → ${caminho}`);
+  await mongoose.disconnect();
 }
 
-rodarAuditoria();
+exportar().catch(console.error);

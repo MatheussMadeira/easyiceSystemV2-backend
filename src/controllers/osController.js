@@ -1,7 +1,7 @@
 const osService = require("../services/osService");
 const User = require("../models/User");
 const { Setor, Prioridade } = require("../models/GenericName");
-const OrdemServico = require("../models/OrdemServico");
+const ServicoFrequente = require("../models/ServicoFrequente");
 
 class OSController {
   async create(req, res) {
@@ -9,20 +9,43 @@ class OSController {
       const usuarioLogado = req.usuario?.nome || "Sistema";
       const funcoesUsuario = req.usuario?.funcoes || [];
 
+      if (req.body.tipo === "PREVENTIVA" && req.body.periodicidadeDias) {
+        const novaOS = await osService.create(
+          req.body,
+          req.files,
+          usuarioLogado,
+          funcoesUsuario
+        );
+
+        const proxima = new Date();
+        proxima.setDate(proxima.getDate() + Number(req.body.periodicidadeDias));
+
+        await ServicoFrequente.create({
+          nome: req.body.nomeServico || `Preventiva - ${req.body.equipamento}`,
+          descricao: req.body.descricaoAbertura,
+          setor: req.body.setor,
+          equipamento: req.body.equipamento,
+          solicitantePadrao: novaOS.solicitante,
+          executorPadrao: req.body.executor || "Não Atribuído",
+          prioridade: req.body.prioridade || "Normal",
+          periodicidadeDias: Number(req.body.periodicidadeDias),
+          ultimaExecucao: new Date(),
+          proximaExecucao: proxima,
+          ativo: true,
+        });
+
+        return res.status(201).json(novaOS);
+      }
+
       const novaOS = await osService.create(
         req.body,
         req.files,
         usuarioLogado,
         funcoesUsuario
       );
-
       return res.status(201).json(novaOS);
     } catch (error) {
-      console.error("❌ [CONTROLLER CREATE ERROR]:", error.message);
-
-      return res.status(400).json({
-        erro: error.message || "Erro ao criar Ordem de Serviço",
-      });
+      return res.status(400).json({ erro: error.message });
     }
   }
 

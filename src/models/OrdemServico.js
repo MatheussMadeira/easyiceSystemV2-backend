@@ -29,7 +29,18 @@ const OrdemServicoSchema = new mongoose.Schema(
     observacoes: { type: String },
     arquivoFechamento: { type: String },
     descricaoFechamento: { type: String },
+    tipo: {
+      type: String,
+      enum: ["CORRETIVA", "PREVENTIVA"],
+      default: "CORRETIVA",
+    },
+    servicoFrequenteId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ServicoFrequente",
+      default: null,
+    },
   },
+
   { timestamps: true }
 );
 

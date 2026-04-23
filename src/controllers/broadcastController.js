@@ -35,6 +35,14 @@ async function sendBroadcast(req, res) {
   });
 
   (async () => {
+    try {
+      await enviarZap(
+        process.env.ZAPI_GROUP_ABERTURA,
+        message.replace(/\{nome\}/gi, "todos")
+      );
+    } catch (err) {
+      console.error("❌ Erro ao enviar para grupo:", err.message);
+    }
     let sent = 0;
     for (const user of users) {
       try {

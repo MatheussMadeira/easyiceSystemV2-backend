@@ -3,6 +3,7 @@ const osRoutes = express.Router();
 const osController = require("../controllers/osController");
 const upload = require("../config/multer");
 const permitir = require("../auth/authMiddleware");
+const ServicoFrequente = require("../models/ServicoFrequente");
 
 const debugLog = (req, res, next) => {
   next();
@@ -12,7 +13,57 @@ const uploadFields = upload.fields([
   { name: "arquivoAbertura", maxCount: 1 },
   { name: "arquivoFechamento", maxCount: 1 },
 ]);
+osRoutes.get("/preventivas", permitir(["ADMIN"]), async (req, res) => {
+  const lista = await ServicoFrequente.find().sort({ proximaExecucao: 1 });
+  res.json(lista);
+});
 
+osRoutes.put("/preventivas/:id", permitir(["ADMIN"]), async (req, res) => {
+  try {
+    const dados = req.body;
+    if (dados.periodicidadeDias) {
+      const sf = await ServicoFrequente.findById(req.params.id);
+      if (sf) {
+        const novaProxima = new Date(sf.ultimaExecucao || new Date());
+        novaProxima.setDate(
+          novaProxima.getDate() + Number(dados.periodicidadeDias)
+        );
+        dados.proximaExecucao = novaProxima;
+      }
+    }
+
+    const atualizado = await ServicoFrequente.findByIdAndUpdate(
+      req.params.id,
+      { $set: dados },
+      { new: true }
+    );
+
+    res.json(atualizado);
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+osRoutes.patch(
+  "/preventivas/:id/toggle",
+  permitir(["ADMIN"]),
+  async (req, res) => {
+    const sf = await ServicoFrequente.findById(req.params.id);
+    sf.ativo = !sf.ativo;
+    await sf.save();
+    res.json(sf);
+  }
+);
+
+osRoutes.post(
+  "/preventivas/:id/executar",
+  permitir(["ADMIN"]),
+  async (req, res) => {
+    const sf = await ServicoFrequente.findById(req.params.id);
+    const os = await osService.criarOSAutomatica(sf);
+    res.json(os);
+  }
+);
 osRoutes.post(
   "/",
   debugLog,

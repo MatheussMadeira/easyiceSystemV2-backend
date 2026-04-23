@@ -3,6 +3,7 @@ const User = require("../models/User");
 const Log = require("../models/Log");
 const { Setor, Prioridade } = require("../models/GenericName");
 const { enviarZap } = require("../services/zapiService");
+const ServicoFrequente = require("../models/ServicoFrequente");
 
 class OSService {
   async getNextNumber() {
@@ -23,7 +24,99 @@ class OSService {
       return 1000;
     }
   }
+  async criarOSAutomatica(servico) {
+    try {
+      const numeroOS = await this.getNextNumber();
 
+      const novaOS = await new OrdemServico({
+        numeroOS,
+        dataAbertura: new Date(),
+        setor: servico.setor,
+        equipamento: servico.equipamento,
+        solicitante: servico.solicitantePadrao,
+        executor: servico.executorPadrao,
+        prioridade: servico.prioridade || "Normal",
+        situacao: "EM ABERTO",
+        descricaoAbertura:
+          servico.descricao || `Manutenção preventiva: ${servico.nome}`,
+        tipo: "PREVENTIVA",
+        servicoFrequenteId: servico._id,
+      }).save();
+
+      const novaProxima = new Date();
+      novaProxima.setDate(novaProxima.getDate() + servico.periodicidadeDias);
+
+      await ServicoFrequente.findByIdAndUpdate(servico._id, {
+        ultimaExecucao: new Date(),
+        proximaExecucao: novaProxima,
+      });
+
+      const agora = new Date();
+      const texto =
+        `🔄 *OS PREVENTIVA - #${novaOS.numeroOS}* 🔄\n\n` +
+        `📋 *SERVIÇO:* ${servico.nome}\n` +
+        `📍 *SETOR:* ${novaOS.setor}\n` +
+        `⚙️ *EQUIPAMENTO:* ${novaOS.equipamento}\n` +
+        `🛠️ *EXECUTOR:* ${novaOS.executor}\n` +
+        `📅 *DATA:* ${agora.toLocaleDateString("pt-BR")}\n` +
+        `🔁 *PERIODICIDADE:* A cada ${servico.periodicidadeDias} dias`;
+
+      enviarZap(process.env.ZAPI_GROUP_ABERTURA, texto);
+
+      const executorDoc = await User.findOne({ nome: novaOS.executor });
+      if (executorDoc?.whatsapp) {
+        enviarZap(executorDoc.whatsapp, texto);
+      }
+
+      await Log.create({
+        usuario: "Sistema",
+        acao: "CRIAÇÃO AUTOMÁTICA",
+        entidade: "OS",
+        detalhes: `OS preventiva #${novaOS.numeroOS} criada automaticamente pelo serviço "${servico.nome}".`,
+        registroId: novaOS._id,
+      });
+
+      console.log(
+        `✅ OS preventiva #${novaOS.numeroOS} criada para: ${servico.nome}`
+      );
+      return novaOS;
+    } catch (error) {
+      console.error(
+        `❌ Erro ao criar OS automática para ${servico.nome}:`,
+        error.message
+      );
+      throw error;
+    }
+  }
+  async processarServicosFrequentes() {
+    const agora = new Date();
+    const servicos = await ServicoFrequente.find({
+      ativo: true,
+      proximaExecucao: { $lte: agora },
+    });
+
+    for (const servico of servicos) {
+      const osAberta = await OrdemServico.findOne({
+        servicoFrequenteId: servico._id,
+        situacao: {
+          $in: ["EM ABERTO", "EM PROCESSO", "PRONTO PARA FINALIZAÇÃO"],
+        },
+      });
+
+      if (osAberta) {
+        console.log(
+          `⏭️ Pulando "${servico.nome}" — OS #${osAberta.numeroOS} ainda pendente`
+        );
+        continue;
+      }
+
+      try {
+        await this.criarOSAutomatica(servico);
+      } catch (err) {
+        console.error(`❌ Erro ao criar OS para ${servico.nome}:`, err.message);
+      }
+    }
+  }
   async create(dados, arquivos, usuarioNome = "Sistema", userRoles = []) {
     try {
       const eAdmin = userRoles.includes("ADMIN");
@@ -381,7 +474,7 @@ class OSService {
       const limitDinamico = query.limit ? parseInt(query.limit) : 150000;
       const temFiltros = Object.keys(filtros).length > 0;
       const limiteFinal = temFiltros && !query.limit ? 0 : limitDinamico;
-
+      if (query.tipo) filtros.tipo = query.tipo;
       return await OrdemServico.find(filtros)
         .sort({ numeroOS: -1 })
         .collation({ locale: "en_US", numericOrdering: true })
