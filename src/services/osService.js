@@ -5,10 +5,6 @@ const { Setor, Prioridade } = require("../models/GenericName");
 const { enviarZap } = require("../services/zapiService");
 const ServicoFrequente = require("../models/ServicoFrequente");
 const enviarZapGroup = (destino, texto) => {
-  if (process.env.DISABLE_ZAP_GROUP === "true") {
-    console.log(`📵 [TESTE] Mensagem suprimida para grupo: ${destino}`);
-    return;
-  }
   enviarZap(destino, texto);
 };
 class OSService {
