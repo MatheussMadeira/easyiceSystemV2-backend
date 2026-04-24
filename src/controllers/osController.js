@@ -2,6 +2,7 @@ const osService = require("../services/osService");
 const User = require("../models/User");
 const { Setor, Prioridade } = require("../models/GenericName");
 const ServicoFrequente = require("../models/ServicoFrequente");
+const OrdemServico = require("../models/OrdemServico");
 
 class OSController {
   async create(req, res) {
@@ -20,7 +21,7 @@ class OSController {
         const proxima = new Date();
         proxima.setDate(proxima.getDate() + Number(req.body.periodicidadeDias));
 
-        await ServicoFrequente.create({
+        const servicoFrequente = await ServicoFrequente.create({
           nome: req.body.nomeServico || `Preventiva - ${req.body.equipamento}`,
           descricao: req.body.descricaoAbertura,
           setor: req.body.setor,
@@ -32,6 +33,10 @@ class OSController {
           ultimaExecucao: new Date(),
           proximaExecucao: proxima,
           ativo: true,
+        });
+
+        await OrdemServico.findByIdAndUpdate(novaOS._id, {
+          servicoFrequenteId: servicoFrequente._id,
         });
 
         return res.status(201).json(novaOS);
