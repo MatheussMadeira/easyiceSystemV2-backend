@@ -17,9 +17,15 @@ class OSController {
           usuarioLogado,
           funcoesUsuario
         );
-
-        const proxima = new Date();
-        proxima.setDate(proxima.getDate() + Number(req.body.periodicidadeDias));
+        let proxima;
+        if (req.body.dataInicio) {
+          proxima = new Date(req.body.dataInicio);
+        } else {
+          proxima = new Date();
+          proxima.setDate(
+            proxima.getDate() + Number(req.body.periodicidadeDias)
+          );
+        }
 
         const servicoFrequente = await ServicoFrequente.create({
           nome: req.body.nomeServico || `Preventiva - ${req.body.equipamento}`,
