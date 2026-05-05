@@ -395,6 +395,32 @@ class OSService {
           osAtualizada.valorMaoDeObraExterna > 0
             ? "Externa (Terceirizado)"
             : "Interna";
+        const dataAberturaFormatada = new Date(
+          osAtualizada.dataAbertura
+        ).toLocaleDateString("pt-BR", {
+          timeZone: "America/Sao_Paulo",
+        });
+        const horaAberturaFormatada = new Date(
+          osAtualizada.dataAbertura
+        ).toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: "America/Sao_Paulo",
+        });
+
+        const diffMs = agoraFinalizada - new Date(osAtualizada.dataAbertura);
+        const diffHoras = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffDias = Math.floor(diffHoras / 24);
+        const horasRest = diffHoras % 24;
+
+        const duracaoTexto =
+          diffDias > 0
+            ? `${diffDias} dia${diffDias > 1 ? "s" : ""}${
+                horasRest > 0 ? ` e ${horasRest}h` : ""
+              }`
+            : diffHoras > 0
+            ? `${diffHoras}h`
+            : "menos de 1h";
         const msgFinalizada =
           `✅ *ORDEM DE SERVIÇO FINALIZADA - #${osAtualizada.numeroOS}* ✅\n\n` +
           `⚙️ *EQUIPAMENTO:* ${osAtualizada.equipamento}\n` +
@@ -412,8 +438,9 @@ class OSService {
           (osAtualizada.arquivoFechamento
             ? `\n🖼️ *Link da Foto:* ${osAtualizada.arquivoFechamento}`
             : "") +
-          `\n\n📅 *FINALIZADA EM:* ${dataFinalizada} às ${horaFinalizada}`;
-
+          `\n\n📅 *ABERTA EM:* ${dataAberturaFormatada} às ${horaAberturaFormatada}\n` +
+          `📅 *FINALIZADA EM:* ${dataFinalizada} às ${horaFinalizada}\n` +
+          `⏱️ *TEMPO DE EXECUÇÃO:* ${duracaoTexto}`;
         enviarZapGroup(process.env.ZAPI_GROUP_FECHAMENTO, msgFinalizada);
         if (
           osParaAtualizar.tipo === "PREVENTIVA" ||
