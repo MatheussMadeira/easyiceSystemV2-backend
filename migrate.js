@@ -1,65 +1,49 @@
+// migracoes/migrar-periodicidade.js
 require("dotenv").config();
 const mongoose = require("mongoose");
-const xlsx = require("xlsx");
-const Equipamento = require("./src/models/Equipamento");
+const OrdemServico = require("./src/models/OrdemServico");
+const ServicoFrequente = require("./src/models/ServicoFrequente");
 
-async function rodarCarga() {
-  try {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log("🔌 Conectado ao banco de dados...");
+async function migrar() {
+  await mongoose.connect(process.env.MONGO_URI);
+  console.log("🔌 Conectado ao banco...\n");
 
-    const workbook = xlsx.readFile("equipamento.xlsx");
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const dadosExcel = xlsx.utils.sheet_to_json(sheet, { range: 1 });
+  const osSemPeriodicidade = await OrdemServico.find({
+    tipo: "PREVENTIVA",
+    servicoFrequenteId: { $ne: null },
+    $or: [
+      { periodicidadeDias: null },
+      { periodicidadeDias: { $exists: false } },
+    ],
+  });
 
-    const equipamentosParaSalvar = [];
+  console.log(`📋 ${osSemPeriodicidade.length} OS(s) para migrar...\n`);
 
-    for (const row of dadosExcel) {
-      const chaves = Object.keys(row);
+  let ok = 0;
+  let erro = 0;
 
-      const numero = String(row[chaves[0]] || "").trim();
-      let setor = String(row[chaves[1]] || "").trim();
-      let nome = String(row[chaves[2]] || "").trim();
-
-      if (numero && setor && nome) {
-        const setorMinusculo = setor.toLowerCase();
-        if (
-          setorMinusculo.includes("camara") ||
-          setorMinusculo.includes("câmara")
-        ) {
-          const conteudoParenteses = setor.match(/\((.*?)\)/);
-
-          if (conteudoParenteses && conteudoParenteses[1]) {
-            const setorReal = conteudoParenteses[1].trim();
-
-            nome = `Câmara - ${nome}`;
-            setor = setorReal;
-          }
-        }
-
-        setor = setor.charAt(0).toUpperCase() + setor.slice(1);
-
-        equipamentosParaSalvar.push({ numero, setor, nome });
-      }
+  for (const os of osSemPeriodicidade) {
+    const servico = await ServicoFrequente.findById(os.servicoFrequenteId);
+    if (servico?.periodicidadeDias) {
+      await OrdemServico.findByIdAndUpdate(os._id, {
+        periodicidadeDias: servico.periodicidadeDias,
+      });
+      console.log(
+        `✅ OS #${os.numeroOS} → periodicidadeDias: ${servico.periodicidadeDias} dias`
+      );
+      ok++;
+    } else {
+      console.warn(`⚠️  OS #${os.numeroOS} → ServicoFrequente não encontrado`);
+      erro++;
     }
-
-    console.log(
-      `📊 ${equipamentosParaSalvar.length} equipamentos lidos e tratados.`
-    );
-
-    console.log("🧹 Limpando base de equipamentos antiga...");
-    await Equipamento.deleteMany({});
-
-    console.log("🚀 Inserindo equipamentos limpos e padronizados...");
-    await Equipamento.insertMany(equipamentosParaSalvar);
-
-    console.log("✅ Carga finalizada com sucesso!");
-    process.exit(0);
-  } catch (err) {
-    console.error("❌ Erro:", err.message);
-    process.exit(1);
   }
+
+  console.log(`\n✅ Migradas: ${ok} | ⚠️  Ignoradas: ${erro}`);
+  await mongoose.disconnect();
+  console.log("🔌 Desconectado.");
 }
 
-rodarCarga();
+migrar().catch((err) => {
+  console.error("❌ Erro na migração:", err.message);
+  process.exit(1);
+});

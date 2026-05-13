@@ -568,22 +568,23 @@ class OSService {
         .limit(limiteFinal)
         .lean();
 
-      // ✅ [ALTERAÇÃO 8] Calcular atrasada: dataAbertura + periodicidadeDias < agora
       const agora = new Date();
+      agora.setHours(0, 0, 0, 0);
+
       return os.map((item) => {
         if (
           item.tipo === "PREVENTIVA" &&
-          item.periodicidadeDias &&
           ["EM ABERTO", "EM PROCESSO", "PRONTO PARA FINALIZAÇÃO"].includes(
             item.situacao
           )
         ) {
-          const prazoLimite = new Date(item.dataAbertura);
-          prazoLimite.setDate(prazoLimite.getDate() + item.periodicidadeDias);
-          item.atrasada = prazoLimite < agora;
+          const abertura = new Date(item.dataAbertura);
+          abertura.setHours(0, 0, 0, 0);
+          item.atrasada = abertura < agora;
         } else {
           item.atrasada = false;
         }
+
         return item;
       });
     } catch (error) {
