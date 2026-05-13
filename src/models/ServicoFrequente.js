@@ -9,7 +9,7 @@ const ServicoFrequenteSchema = new mongoose.Schema(
     solicitantePadrao: { type: String, required: true },
     executorPadrao: { type: String, required: true },
     prioridade: { type: String, default: "Normal" },
-    periodicidadeDias: { type: Number, required: true },
+    periodicidadeDias: { type: Number, required: true, min: 1 },
     ultimaExecucao: { type: Date, default: Date.now },
     proximaExecucao: { type: Date, required: true },
     ativo: { type: Boolean, default: true },

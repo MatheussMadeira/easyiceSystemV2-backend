@@ -13,22 +13,17 @@ const OrdemServicoSchema = new mongoose.Schema(
     descricaoAbertura: { type: String },
     arquivoAbertura: { type: String },
     descricaoProcesso: { type: String },
-    dataPrevista: {
-      type: Date,
-      required: false,
-    },
+    dataPrevista: { type: Date, required: false },
     dataFechamento: { type: Date },
     pecasUtilizadas: { type: String },
     valorPecas: { type: Number, default: 0 },
     valorMaoDeObra: { type: Number, default: 0 },
     valorMaoDeObraExterna: { type: Number, default: 0 },
-    dataParaConcluir: {
-      type: Date,
-      required: false,
-    },
+    dataParaConcluir: { type: Date, required: false },
     observacoes: { type: String },
     arquivoFechamento: { type: String },
     descricaoFechamento: { type: String },
+    motivoRejeicao: { type: String },
     tipo: {
       type: String,
       enum: ["CORRETIVA", "PREVENTIVA"],
@@ -39,8 +34,8 @@ const OrdemServicoSchema = new mongoose.Schema(
       ref: "ServicoFrequente",
       default: null,
     },
+    periodicidadeDias: { type: Number, default: null },
   },
-
   { timestamps: true }
 );
 

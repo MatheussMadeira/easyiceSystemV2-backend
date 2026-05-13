@@ -4,9 +4,11 @@ const Log = require("../models/Log");
 const { Setor, Prioridade } = require("../models/GenericName");
 const { enviarZap } = require("../services/zapiService");
 const ServicoFrequente = require("../models/ServicoFrequente");
+
 const enviarZapGroup = (destino, texto) => {
   enviarZap(destino, texto);
 };
+
 class OSService {
   async getNextNumber() {
     try {
@@ -19,13 +21,13 @@ class OSService {
       }
 
       const proximo = Number(ultimaOS.numeroOS) + 1;
-
       return proximo;
     } catch (error) {
       console.error("### ERRO getNextNumber ###", error.message);
       return 1000;
     }
   }
+
   async criarOSAutomatica(servico) {
     try {
       const numeroOS = await this.getNextNumber();
@@ -43,15 +45,11 @@ class OSService {
           servico.descricao || `Manutenção preventiva: ${servico.nome}`,
         tipo: "PREVENTIVA",
         servicoFrequenteId: servico._id,
+        periodicidadeDias: servico.periodicidadeDias, // ✅ [ALTERAÇÃO 1] salvar periodicidade na OS
       }).save();
 
-      const novaProxima = new Date();
-      novaProxima.setDate(novaProxima.getDate() + servico.periodicidadeDias);
-
-      await ServicoFrequente.findByIdAndUpdate(servico._id, {
-        ultimaExecucao: new Date(),
-        proximaExecucao: novaProxima,
-      });
+      // ✅ [ALTERAÇÃO 2] Removido: agendamento da próxima execução
+      // Agora é feito apenas na conclusão da OS (método update)
 
       const agora = new Date();
       const texto =
@@ -90,6 +88,7 @@ class OSService {
       throw error;
     }
   }
+
   async processarServicosFrequentes() {
     const agora = new Date();
     const servicos = await ServicoFrequente.find({
@@ -119,6 +118,7 @@ class OSService {
       }
     }
   }
+
   async create(dados, arquivos, usuarioNome = "Sistema", userRoles = []) {
     try {
       const eAdmin = userRoles.includes("ADMIN");
@@ -157,11 +157,13 @@ class OSService {
         minute: "2-digit",
         timeZone: "America/Sao_Paulo",
       });
+
       const novaOS = await new OrdemServico(novaOSData).save();
       const prioridadeCurta = novaOS.prioridade.toUpperCase();
       const linkFoto = novaOS.arquivoAbertura
         ? `\n🖼️ *FOTO DO PROBLEMA:* ${novaOS.arquivoAbertura}`
         : "";
+
       const texto =
         novaOS.tipo === "PREVENTIVA"
           ? `🔄 *NOVA OS PREVENTIVA - #${novaOS.numeroOS}* 🔄\n\n` +
@@ -195,6 +197,7 @@ class OSService {
       if (executorDoc?.whatsapp) {
         enviarZap(executorDoc.whatsapp, texto);
       }
+
       try {
         await Log.create({
           usuario: usuarioNome,
@@ -206,12 +209,14 @@ class OSService {
       } catch (logError) {
         console.error("⚠️ Falha ao salvar log de criação:", logError.message);
       }
+
       return novaOS;
     } catch (error) {
       this.logDetailedError("CREATE", error);
       throw error;
     }
   }
+
   async getOptions() {
     try {
       const [sDocs, solDocs, exeDocs, priDocs] = await Promise.all([
@@ -252,10 +257,12 @@ class OSService {
       if (osParaAtualizar.situacao === "CONCLUÍDO") {
         throw new Error("OS já CONCLUÍDA.");
       }
+
       let camposParaAtualizar = {
         situacao: dados.situacao,
         executor: dados.executor,
       };
+
       if (dados.valorMaoDeObra !== undefined) {
         const vInterna = Number(dados.valorMaoDeObra) || 0;
         camposParaAtualizar.valorMaoDeObra = vInterna;
@@ -267,13 +274,16 @@ class OSService {
         camposParaAtualizar.valorMaoDeObraExterna = vExterna;
         if (vExterna > 0) camposParaAtualizar.valorMaoDeObra = 0;
       }
+
       if (dados.dataPrevista) {
         camposParaAtualizar.dataPrevista = dados.dataPrevista;
       }
+
       let logMensagem = `Editou a OS #${osParaAtualizar.numeroOS}.`;
       if (dados.situacao && dados.situacao !== osParaAtualizar.situacao) {
         logMensagem = `Alterou status da OS #${osParaAtualizar.numeroOS} de "${osParaAtualizar.situacao}" para "${dados.situacao}".`;
       }
+
       if (dados.situacao === "EM PROCESSO") {
         camposParaAtualizar.descricaoProcesso = dados.descricaoProcesso;
         camposParaAtualizar.dataFechamento = null;
@@ -297,27 +307,9 @@ class OSService {
           descricaoFechamento: dados.descricaoFechamento,
           valorPecas: Number(dados.valorPecas) || 0,
         };
-        if (
-          dados.situacao === "EM PROCESSO" &&
-          osParaAtualizar.situacao === "PRONTO PARA FINALIZAÇÃO" &&
-          dados.motivoRejeicao
-        ) {
-          const executorDoc = await User.findOne({
-            nome: osAtualizada.executor,
-          });
-          if (executorDoc?.whatsapp) {
-            const msgRejeicao =
-              `❌ *OS #${osAtualizada.numeroOS} FOI DEVOLVIDA PARA REEXECUÇÃO* ❌\n\n` +
-              `👤 *SOLICITANTE:* ${osAtualizada.solicitante}\n` +
-              `⚙️ *EQUIPAMENTO:* ${osAtualizada.equipamento}\n` +
-              `📍 *SETOR:* ${osAtualizada.setor}\n` +
-              `----------------------------------\n` +
-              `💬 *MOTIVO DA DEVOLUÇÃO:*\n${dados.motivoRejeicao}\n\n` +
-              `👉 Por favor, verifique o serviço e atualize a OS novamente.`;
 
-            enviarZap(executorDoc.whatsapp, msgRejeicao);
-          }
-        }
+        // ✅ [ALTERAÇÃO 3] Removido bloco morto com bug de escopo (osAtualizada não existia aqui)
+
         if (arquivos?.arquivoFechamento?.[0]?.path) {
           camposParaAtualizar.arquivoFechamento =
             arquivos.arquivoFechamento[0].path;
@@ -327,10 +319,7 @@ class OSService {
       const osAtualizada = await OrdemServico.findByIdAndUpdate(
         id,
         { $set: camposParaAtualizar },
-        {
-          returnDocument: "after",
-          runValidators: true,
-        }
+        { returnDocument: "after", runValidators: true }
       );
 
       const solicitanteDoc = await User.findOne({
@@ -358,8 +347,31 @@ class OSService {
           `💬 *OBSERVAÇÕES:* ${
             dados.descricaoProcesso || "Equipamento em análise técnica."
           }`;
+
         if (foneSolicitante) enviarZap(foneSolicitante, msgProcesso);
+
+        // ✅ [ALTERAÇÃO 4] Notificação de rejeição movida para cá (osAtualizada já existe)
+        if (
+          osParaAtualizar.situacao === "PRONTO PARA FINALIZAÇÃO" &&
+          dados.motivoRejeicao
+        ) {
+          const executorDoc = await User.findOne({
+            nome: osAtualizada.executor,
+          });
+          if (executorDoc?.whatsapp) {
+            const msgRejeicao =
+              `❌ *OS #${osAtualizada.numeroOS} FOI DEVOLVIDA PARA REEXECUÇÃO* ❌\n\n` +
+              `👤 *SOLICITANTE:* ${osAtualizada.solicitante}\n` +
+              `⚙️ *EQUIPAMENTO:* ${osAtualizada.equipamento}\n` +
+              `📍 *SETOR:* ${osAtualizada.setor}\n` +
+              `----------------------------------\n` +
+              `💬 *MOTIVO DA DEVOLUÇÃO:*\n${dados.motivoRejeicao}\n\n` +
+              `👉 Por favor, verifique o serviço e atualize a OS novamente.`;
+            enviarZap(executorDoc.whatsapp, msgRejeicao);
+          }
+        }
       }
+
       if (
         dados.situacao === "PRONTO PARA FINALIZAÇÃO" &&
         osParaAtualizar.situacao !== "PRONTO PARA FINALIZAÇÃO"
@@ -374,6 +386,7 @@ class OSService {
           `👉 *POR FAVOR:* Acesse o sistema para conferir os valores e finalizar a ordem.`;
         if (foneSolicitante) enviarZap(foneSolicitante, msgPronto);
       }
+
       if (
         dados.situacao === "CONCLUÍDO" &&
         osParaAtualizar.situacao !== "CONCLUÍDO"
@@ -397,9 +410,7 @@ class OSService {
             : "Interna";
         const dataAberturaFormatada = new Date(
           osAtualizada.dataAbertura
-        ).toLocaleDateString("pt-BR", {
-          timeZone: "America/Sao_Paulo",
-        });
+        ).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
         const horaAberturaFormatada = new Date(
           osAtualizada.dataAbertura
         ).toLocaleTimeString("pt-BR", {
@@ -421,6 +432,7 @@ class OSService {
             : diffHoras > 0
             ? `${diffHoras}h`
             : "menos de 1h";
+
         const msgFinalizada =
           `✅ *ORDEM DE SERVIÇO FINALIZADA - #${osAtualizada.numeroOS}* ✅\n\n` +
           `⚙️ *EQUIPAMENTO:* ${osAtualizada.equipamento}\n` +
@@ -441,22 +453,35 @@ class OSService {
           `\n\n📅 *ABERTA EM:* ${dataAberturaFormatada} às ${horaAberturaFormatada}\n` +
           `📅 *FINALIZADA EM:* ${dataFinalizada} às ${horaFinalizada}\n` +
           `⏱️ *TEMPO DE EXECUÇÃO:* ${duracaoTexto}`;
+
         enviarZapGroup(process.env.ZAPI_GROUP_FECHAMENTO, msgFinalizada);
-        if (
-          osParaAtualizar.tipo === "PREVENTIVA" ||
-          osParaAtualizar.servicoFrequenteId
-        ) {
-          console.log(
-            `🔄 OS preventiva #${osAtualizada.numeroOS} concluída — verificando próxima criação...`
+
+        // ✅ [ALTERAÇÃO 5] Agendar próxima execução a partir da data de conclusão
+        if (osParaAtualizar.servicoFrequenteId) {
+          const servico = await ServicoFrequente.findById(
+            osParaAtualizar.servicoFrequenteId
           );
-          this.processarServicosFrequentes().catch((err) =>
-            console.error(
-              "⚠️ Erro ao processar serviços após conclusão:",
-              err.message
-            )
-          );
+          if (servico) {
+            const novaProxima = new Date();
+            novaProxima.setDate(
+              novaProxima.getDate() + servico.periodicidadeDias
+            );
+            await ServicoFrequente.findByIdAndUpdate(servico._id, {
+              ultimaExecucao: new Date(),
+              proximaExecucao: novaProxima,
+            });
+            console.log(
+              `📅 Próxima execução de "${
+                servico.nome
+              }" agendada para: ${novaProxima.toLocaleDateString("pt-BR")}`
+            );
+          }
         }
+
+        // ✅ [ALTERAÇÃO 6] Removido: processarServicosFrequentes() desnecessário
+        // A próxima OS só será criada quando o cron detectar proximaExecucao <= agora
       }
+
       try {
         await Log.create({
           usuario: usuarioNome,
@@ -478,6 +503,7 @@ class OSService {
       throw error;
     }
   }
+
   async read(query) {
     try {
       let filtros = {};
@@ -502,9 +528,11 @@ class OSService {
 
       const prioridade = montarFiltroIn(query.prioridade);
       if (prioridade) filtros.prioridade = prioridade;
+
       if (query.numeroOS) {
         filtros.numeroOS = { $regex: query.numeroOS, $options: "i" };
       }
+
       if (query.busca) {
         const termo = query.busca;
         filtros.$or = [
@@ -514,27 +542,50 @@ class OSService {
           { descricaoAbertura: { $regex: termo, $options: "i" } },
         ];
       }
+
       if (query.dataInicio || query.dataFim) {
         filtros.createdAt = {};
-
         if (query.dataInicio) {
           filtros.createdAt.$gte = new Date(query.dataInicio);
         }
-
         if (query.dataFim) {
           const fimDoDia = new Date(query.dataFim);
           fimDoDia.setHours(23, 59, 59, 999);
           filtros.createdAt.$lte = fimDoDia;
         }
       }
+
+      if (query.tipo) filtros.tipo = query.tipo;
+
       const limitDinamico = query.limit ? parseInt(query.limit) : 150000;
       const temFiltros = Object.keys(filtros).length > 0;
       const limiteFinal = temFiltros && !query.limit ? 0 : limitDinamico;
-      if (query.tipo) filtros.tipo = query.tipo;
-      return await OrdemServico.find(filtros)
+
+      // ✅ [ALTERAÇÃO 7] .lean() para permitir adição do campo atrasada
+      const os = await OrdemServico.find(filtros)
         .sort({ numeroOS: -1 })
         .collation({ locale: "en_US", numericOrdering: true })
-        .limit(limiteFinal);
+        .limit(limiteFinal)
+        .lean();
+
+      // ✅ [ALTERAÇÃO 8] Calcular atrasada: dataAbertura + periodicidadeDias < agora
+      const agora = new Date();
+      return os.map((item) => {
+        if (
+          item.tipo === "PREVENTIVA" &&
+          item.periodicidadeDias &&
+          ["EM ABERTO", "EM PROCESSO", "PRONTO PARA FINALIZAÇÃO"].includes(
+            item.situacao
+          )
+        ) {
+          const prazoLimite = new Date(item.dataAbertura);
+          prazoLimite.setDate(prazoLimite.getDate() + item.periodicidadeDias);
+          item.atrasada = prazoLimite < agora;
+        } else {
+          item.atrasada = false;
+        }
+        return item;
+      });
     } catch (error) {
       console.error("### ERRO NO READ SERVICE ###", error.message);
       throw error;
@@ -583,6 +634,7 @@ class OSService {
       throw error;
     }
   }
+
   async updateGeneric(id, dados, usuarioNome = "Sistema") {
     try {
       const osAntiga = await OrdemServico.findById(id);
@@ -596,11 +648,9 @@ class OSService {
 
       try {
         let detalhesArray = [];
-
         Object.keys(dados).forEach((campo) => {
           const valorAntigo = osAntiga[campo];
           const valorNovo = dados[campo];
-
           if (valorAntigo !== valorNovo) {
             detalhesArray.push(
               `${campo}: "${valorAntigo || "Vazio"}" ➔ "${valorNovo}"`
@@ -632,6 +682,7 @@ class OSService {
       throw error;
     }
   }
+
   logDetailedError(metodo, error) {
     console.error(`### [ERRO FATAL] Método: ${metodo} ###`);
     console.error("Mensagem:", error.message);
@@ -645,6 +696,7 @@ class OSService {
       console.error("Stack Trace:", error.stack);
     }
   }
+
   async updatePecas(numeroOS, dados, usuarioNome = "Sistema") {
     try {
       const { peca, valorPeca, valorMaoDeObra } = dados;
