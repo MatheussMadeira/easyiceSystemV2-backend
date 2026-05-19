@@ -623,14 +623,15 @@ class OSService {
         if (item.tipo === "PREVENTIVA") {
           const abertura = new Date(item.dataAbertura);
           abertura.setHours(0, 0, 0, 0);
-
           if (item.situacao === "EM ABERTO" && item.periodicidadeDias) {
             const dataProcesso = new Date(item.dataAbertura);
             dataProcesso.setDate(
               dataProcesso.getDate() + item.periodicidadeDias
             );
             dataProcesso.setHours(0, 0, 0, 0);
-            item.diasParaProcesso = this._diasUteisAte(dataProcesso);
+            item.diasParaProcesso = Math.ceil(
+              (dataProcesso - agora) / (1000 * 60 * 60 * 24)
+            );
           } else {
             item.diasParaProcesso = null;
           }
