@@ -17,6 +17,34 @@ class OSService {
     if (dia === 0) d.setDate(d.getDate() + 1);
     return d;
   }
+
+  _diasUteisAte(dataAlvo) {
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const alvo = new Date(dataAlvo);
+    alvo.setHours(0, 0, 0, 0);
+
+    let count = 0;
+    let cursor = new Date(hoje);
+
+    if (alvo >= hoje) {
+      // Conta dias úteis para frente (positivo)
+      while (cursor < alvo) {
+        cursor.setDate(cursor.getDate() + 1);
+        const dia = cursor.getDay();
+        if (dia !== 0 && dia !== 6) count++;
+      }
+      return count;
+    } else {
+      // Conta dias úteis para trás (negativo = já passou)
+      while (cursor > alvo) {
+        cursor.setDate(cursor.getDate() - 1);
+        const dia = cursor.getDay();
+        if (dia !== 0 && dia !== 6) count--;
+      }
+      return count;
+    }
+  }
   async getNextNumber() {
     try {
       const ultimaOS = await OrdemServico.findOne({}, { numeroOS: 1 })
