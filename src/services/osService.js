@@ -10,6 +10,13 @@ const enviarZapGroup = (destino, texto) => {
 };
 
 class OSService {
+  _proximoDiaUtil(data) {
+    const d = new Date(data);
+    const dia = d.getDay();
+    if (dia === 6) d.setDate(d.getDate() + 2);
+    if (dia === 0) d.setDate(d.getDate() + 1);
+    return d;
+  }
   async getNextNumber() {
     try {
       const ultimaOS = await OrdemServico.findOne({}, { numeroOS: 1 })
@@ -140,10 +147,11 @@ class OSService {
 
         const novaProxima = new Date();
         novaProxima.setDate(novaProxima.getDate() + servico.periodicidadeDias);
+        const novaProximaAjustada = this._proximoDiaUtil(novaProxima);
 
         await ServicoFrequente.findByIdAndUpdate(servico._id, {
           ultimaExecucao: new Date(),
-          proximaExecucao: novaProxima,
+          proximaExecucao: novaProximaAjustada,
         });
 
         console.log(
@@ -594,9 +602,7 @@ class OSService {
               dataProcesso.getDate() + item.periodicidadeDias
             );
             dataProcesso.setHours(0, 0, 0, 0);
-            item.diasParaProcesso = Math.ceil(
-              (dataProcesso - agora) / (1000 * 60 * 60 * 24)
-            );
+            item.diasParaProcesso = this._diasUteisAte(dataProcesso);
           } else {
             item.diasParaProcesso = null;
           }
