@@ -45,21 +45,20 @@ class OSService {
           servico.descricao || `Manutenção preventiva: ${servico.nome}`,
         tipo: "PREVENTIVA",
         servicoFrequenteId: servico._id,
-        periodicidadeDias: servico.periodicidadeDias, // ✅ [ALTERAÇÃO 1] salvar periodicidade na OS
+        periodicidadeDias: servico.periodicidadeDias,
+        tempoExecucao: servico.tempoExecucao || 1,
       }).save();
-
-      // ✅ [ALTERAÇÃO 2] Removido: agendamento da próxima execução
-      // Agora é feito apenas na conclusão da OS (método update)
 
       const agora = new Date();
       const texto =
-        `🔄 *OS PREVENTIVA - #${novaOS.numeroOS}* 🔄\n\n` +
+        `🔄 *NOVA OS PREVENTIVA - #${novaOS.numeroOS}* 🔄\n\n` +
         `📋 *SERVIÇO:* ${servico.nome}\n` +
         `📍 *SETOR:* ${novaOS.setor}\n` +
         `⚙️ *EQUIPAMENTO:* ${novaOS.equipamento}\n` +
         `🛠️ *EXECUTOR:* ${novaOS.executor}\n` +
         `📅 *DATA:* ${agora.toLocaleDateString("pt-BR")}\n` +
-        `🔁 *PERIODICIDADE:* A cada ${servico.periodicidadeDias} dias`;
+        `🔁 *PERIODICIDADE:* A cada ${servico.periodicidadeDias} dias\n` +
+        `⏱️ *TEMPO DE EXECUÇÃO:* ${servico.tempoExecucao || 1} dia(s)`;
 
       enviarZapGroup(process.env.ZAPI_GROUP_ABERTURA, texto);
 
@@ -91,30 +90,69 @@ class OSService {
 
   async processarServicosFrequentes() {
     const agora = new Date();
+
     const servicos = await ServicoFrequente.find({
       ativo: true,
       proximaExecucao: { $lte: agora },
     });
 
     for (const servico of servicos) {
-      const osAberta = await OrdemServico.findOne({
-        servicoFrequenteId: servico._id,
-        situacao: {
-          $in: ["EM ABERTO", "EM PROCESSO", "PRONTO PARA FINALIZAÇÃO"],
-        },
-      });
-
-      if (osAberta) {
-        console.log(
-          `⏭️ Pulando "${servico.nome}" — OS #${osAberta.numeroOS} ainda pendente`
-        );
-        continue;
-      }
-
       try {
+        const osEmAberto = await OrdemServico.find({
+          servicoFrequenteId: servico._id,
+          situacao: "EM ABERTO",
+        });
+
+        for (const os of osEmAberto) {
+          await OrdemServico.findByIdAndUpdate(os._id, {
+            $set: { situacao: "EM PROCESSO" },
+          });
+
+          const msgExecucao =
+            `🔔 *HORA DE EXECUTAR - OS #${os.numeroOS}* 🔔\n\n` +
+            `📋 *SERVIÇO:* ${servico.nome}\n` +
+            `📍 *SETOR:* ${os.setor}\n` +
+            `⚙️ *EQUIPAMENTO:* ${os.equipamento}\n` +
+            `----------------------------------\n` +
+            `👉 A periodicidade de ${servico.periodicidadeDias} dias foi atingida.\n` +
+            `⏱️ Você tem ${
+              servico.tempoExecucao || 1
+            } dia(s) para executar e finalizar.\n\n` +
+            `📅 *DATA:* ${agora.toLocaleDateString("pt-BR")}`;
+
+          const executorDoc = await User.findOne({ nome: os.executor });
+          if (executorDoc?.whatsapp) {
+            enviarZap(executorDoc.whatsapp, msgExecucao);
+          }
+
+          await Log.create({
+            usuario: "Sistema",
+            acao: "AUTO PROGRESSÃO",
+            entidade: "OS",
+            detalhes: `OS #${os.numeroOS} movida automaticamente para EM PROCESSO pelo serviço "${servico.nome}".`,
+            registroId: os._id,
+          });
+
+          console.log(`⚡ OS #${os.numeroOS} → EM PROCESSO (automático)`);
+        }
+
         await this.criarOSAutomatica(servico);
+
+        const novaProxima = new Date();
+        novaProxima.setDate(novaProxima.getDate() + servico.periodicidadeDias);
+
+        await ServicoFrequente.findByIdAndUpdate(servico._id, {
+          ultimaExecucao: new Date(),
+          proximaExecucao: novaProxima,
+        });
+
+        console.log(
+          `📅 Próxima execução de "${
+            servico.nome
+          }": ${novaProxima.toLocaleDateString("pt-BR")}`
+        );
       } catch (err) {
-        console.error(`❌ Erro ao criar OS para ${servico.nome}:`, err.message);
+        console.error(`❌ Erro ao processar "${servico.nome}":`, err.message);
       }
     }
   }
@@ -455,31 +493,6 @@ class OSService {
           `⏱️ *TEMPO DE EXECUÇÃO:* ${duracaoTexto}`;
 
         enviarZapGroup(process.env.ZAPI_GROUP_FECHAMENTO, msgFinalizada);
-
-        // ✅ [ALTERAÇÃO 5] Agendar próxima execução a partir da data de conclusão
-        if (osParaAtualizar.servicoFrequenteId) {
-          const servico = await ServicoFrequente.findById(
-            osParaAtualizar.servicoFrequenteId
-          );
-          if (servico) {
-            const novaProxima = new Date();
-            novaProxima.setDate(
-              novaProxima.getDate() + servico.periodicidadeDias
-            );
-            await ServicoFrequente.findByIdAndUpdate(servico._id, {
-              ultimaExecucao: new Date(),
-              proximaExecucao: novaProxima,
-            });
-            console.log(
-              `📅 Próxima execução de "${
-                servico.nome
-              }" agendada para: ${novaProxima.toLocaleDateString("pt-BR")}`
-            );
-          }
-        }
-
-        // ✅ [ALTERAÇÃO 6] Removido: processarServicosFrequentes() desnecessário
-        // A próxima OS só será criada quando o cron detectar proximaExecucao <= agora
       }
 
       try {
@@ -561,7 +574,6 @@ class OSService {
       const temFiltros = Object.keys(filtros).length > 0;
       const limiteFinal = temFiltros && !query.limit ? 0 : limitDinamico;
 
-      // ✅ [ALTERAÇÃO 7] .lean() para permitir adição do campo atrasada
       const os = await OrdemServico.find(filtros)
         .sort({ numeroOS: -1 })
         .collation({ locale: "en_US", numericOrdering: true })
@@ -572,17 +584,42 @@ class OSService {
       agora.setHours(0, 0, 0, 0);
 
       return os.map((item) => {
-        if (
-          item.tipo === "PREVENTIVA" &&
-          ["EM ABERTO", "EM PROCESSO", "PRONTO PARA FINALIZAÇÃO"].includes(
-            item.situacao
-          )
-        ) {
+        if (item.tipo === "PREVENTIVA") {
           const abertura = new Date(item.dataAbertura);
           abertura.setHours(0, 0, 0, 0);
-          item.atrasada = abertura < agora;
+
+          if (item.situacao === "EM ABERTO" && item.periodicidadeDias) {
+            const dataProcesso = new Date(item.dataAbertura);
+            dataProcesso.setDate(
+              dataProcesso.getDate() + item.periodicidadeDias
+            );
+            dataProcesso.setHours(0, 0, 0, 0);
+            item.diasParaProcesso = Math.ceil(
+              (dataProcesso - agora) / (1000 * 60 * 60 * 24)
+            );
+          } else {
+            item.diasParaProcesso = null;
+          }
+
+          if (
+            ["EM ABERTO", "EM PROCESSO", "PRONTO PARA FINALIZAÇÃO"].includes(
+              item.situacao
+            )
+          ) {
+            const prazoAtrasada = new Date(item.dataAbertura);
+            prazoAtrasada.setDate(
+              prazoAtrasada.getDate() +
+                (item.periodicidadeDias || 0) +
+                (item.tempoExecucao || 1)
+            );
+            prazoAtrasada.setHours(0, 0, 0, 0);
+            item.atrasada = prazoAtrasada < agora;
+          } else {
+            item.atrasada = false;
+          }
         } else {
           item.atrasada = false;
+          item.diasParaProcesso = null;
         }
 
         return item;

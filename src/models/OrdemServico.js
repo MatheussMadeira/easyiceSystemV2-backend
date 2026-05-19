@@ -35,6 +35,7 @@ const OrdemServicoSchema = new mongoose.Schema(
       default: null,
     },
     periodicidadeDias: { type: Number, default: null },
+    tempoExecucao: { type: Number, default: null },
   },
   { timestamps: true }
 );
