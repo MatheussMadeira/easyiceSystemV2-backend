@@ -357,7 +357,14 @@ class OSService {
       if (dados.situacao && dados.situacao !== osParaAtualizar.situacao) {
         logMensagem = `Alterou status da OS #${osParaAtualizar.numeroOS} de "${osParaAtualizar.situacao}" para "${dados.situacao}".`;
       }
-
+      if (
+        dados.situacao === "EM PROCESSO" &&
+        osParaAtualizar.tipo === "PREVENTIVA"
+      ) {
+        throw new Error(
+          "OS Preventiva não pode ser movida manualmente para EM PROCESSO. Isso é feito automaticamente pelo sistema."
+        );
+      }
       if (dados.situacao === "EM PROCESSO") {
         camposParaAtualizar.descricaoProcesso = dados.descricaoProcesso;
         camposParaAtualizar.dataFechamento = null;
@@ -381,9 +388,6 @@ class OSService {
           descricaoFechamento: dados.descricaoFechamento,
           valorPecas: Number(dados.valorPecas) || 0,
         };
-
-        // ✅ [ALTERAÇÃO 3] Removido bloco morto com bug de escopo (osAtualizada não existia aqui)
-
         if (arquivos?.arquivoFechamento?.[0]?.path) {
           camposParaAtualizar.arquivoFechamento =
             arquivos.arquivoFechamento[0].path;
@@ -424,7 +428,6 @@ class OSService {
 
         if (foneSolicitante) enviarZap(foneSolicitante, msgProcesso);
 
-        // ✅ [ALTERAÇÃO 4] Notificação de rejeição movida para cá (osAtualizada já existe)
         if (
           osParaAtualizar.situacao === "PRONTO PARA FINALIZAÇÃO" &&
           dados.motivoRejeicao
@@ -711,6 +714,11 @@ class OSService {
   async updateGeneric(id, dados, usuarioNome = "Sistema") {
     try {
       const osAntiga = await OrdemServico.findById(id);
+      if (dados.situacao === "EM PROCESSO" && osAntiga.tipo === "PREVENTIVA") {
+        throw new Error(
+          "OS Preventiva não pode ser movida manualmente para EM PROCESSO."
+        );
+      }
       if (!osAntiga) throw new Error("OS não encontrada.");
 
       const atualizado = await OrdemServico.findByIdAndUpdate(
@@ -723,6 +731,7 @@ class OSService {
         let detalhesArray = [];
         Object.keys(dados).forEach((campo) => {
           const valorAntigo = osAntiga[campo];
+
           const valorNovo = dados[campo];
           if (valorAntigo !== valorNovo) {
             detalhesArray.push(

@@ -1,38 +1,62 @@
+// corrigir-data-abertura.js
 require("dotenv").config();
 const mongoose = require("mongoose");
-const XLSX = require("xlsx");
-const path = require("path");
+const OrdemServico = require("./src/models/OrdemServico");
+const ServicoFrequente = require("./src/models/ServicoFrequente");
 
-const Equipamento = mongoose.model(
-  "Equipamento",
-  new mongoose.Schema({}, { strict: false })
-);
-
-async function exportar() {
+async function corrigir() {
   await mongoose.connect(process.env.MONGO_URI);
+  console.log("🔌 Conectado...\n");
 
-  const dados = await Equipamento.find(
-    {},
-    { numero: 1, nome: 1, setor: 1, _id: 0 }
-  )
-    .sort({ numero: 1 })
-    .collation({ locale: "en_US", numericOrdering: true });
+  const servicos = await ServicoFrequente.find({ ativo: true });
 
-  const linhas = dados.map((d) => ({
-    Número: d.numero,
-    Nome: d.nome,
-    Setor: d.setor,
-  }));
+  for (const s of servicos) {
+    // Busca OS aberta desse serviço
+    const osAberta = await OrdemServico.findOne({
+      servicoFrequenteId: s._id,
+      situacao: "EM ABERTO",
+    }).sort({ dataAbertura: -1 });
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(linhas);
-  XLSX.utils.book_append_sheet(wb, ws, "Equipamentos");
+    if (!osAberta) continue;
 
-  const caminho = path.join(__dirname, "equipamentos_export.xlsx");
-  XLSX.writeFile(wb, caminho);
+    // Busca última OS concluída desse serviço
+    const ultimaConcluida = await OrdemServico.findOne({
+      servicoFrequenteId: s._id,
+      situacao: "CONCLUÍDO",
+    }).sort({ dataFechamento: -1 });
 
-  console.log(`✅ ${dados.length} equipamentos exportados → ${caminho}`);
+    if (!ultimaConcluida) continue;
+
+    const dataCorreta = new Date(
+      ultimaConcluida.dataFechamento || ultimaConcluida.dataAbertura
+    );
+
+    // Só corrige se dataAbertura for diferente da dataCorreta
+    const dataAtual = new Date(osAberta.dataAbertura);
+    dataAtual.setHours(0, 0, 0, 0);
+    dataCorreta.setHours(0, 0, 0, 0);
+
+    if (dataAtual.getTime() === dataCorreta.getTime()) {
+      console.log(
+        `⏭️  OS #${osAberta.numeroOS} "${s.nome}" — data já correta, pulando`
+      );
+      continue;
+    }
+
+    await OrdemServico.findByIdAndUpdate(osAberta._id, {
+      dataAbertura: dataCorreta,
+    });
+
+    console.log(`✅ OS #${osAberta.numeroOS} "${s.nome}"`);
+    console.log(
+      `   dataAbertura: ${dataAtual.toLocaleDateString(
+        "pt-BR"
+      )} → ${dataCorreta.toLocaleDateString("pt-BR")}\n`
+    );
+  }
+
+  console.log("✅ Concluído!");
   await mongoose.disconnect();
 }
 
-exportar().catch(console.error);
+corrigir().catch(console.error);
