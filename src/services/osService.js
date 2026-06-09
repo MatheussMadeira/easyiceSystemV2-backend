@@ -160,13 +160,20 @@ class OSService {
             enviarZap(executorDoc.whatsapp, msgExecucao);
           }
 
-          await Log.create({
-            usuario: "Sistema",
-            acao: "AUTO PROGRESSÃO",
-            entidade: "OS",
-            detalhes: `OS #${os.numeroOS} movida automaticamente para EM PROCESSO pelo serviço "${servico.nome}".`,
-            registroId: os._id,
-          });
+          try {
+            await Log.create({
+              usuario: "Sistema",
+              acao: "AUTO PROGRESSÃO",
+              entidade: "OS",
+              detalhes: `OS #${os.numeroOS} movida automaticamente para EM PROCESSO pelo serviço "${servico.nome}".`,
+              registroId: os._id,
+            });
+          } catch (logErr) {
+            console.error(
+              `⚠️ Erro ao logar progressão OS #${os.numeroOS}:`,
+              logErr.message
+            );
+          }
 
           console.log(`⚡ OS #${os.numeroOS} → EM PROCESSO (automático)`);
         }
@@ -175,6 +182,7 @@ class OSService {
 
         const novaProxima = new Date();
         novaProxima.setDate(novaProxima.getDate() + servico.periodicidadeDias);
+        novaProxima.setHours(0, 0, 0, 0);
         const novaProximaAjustada = this._proximoDiaUtil(novaProxima);
 
         await ServicoFrequente.findByIdAndUpdate(servico._id, {
