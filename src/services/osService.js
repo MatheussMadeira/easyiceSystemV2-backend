@@ -111,13 +111,13 @@ class OSService {
       });
 
       console.log(
-        `✅ OS preventiva #${novaOS.numeroOS} criada para: ${servico.nome}`
+        `✅ OS preventiva #${novaOS.numeroOS} criada para: ${servico.nome}`,
       );
       return novaOS;
     } catch (error) {
       console.error(
         `❌ Erro ao criar OS automática para ${servico.nome}:`,
-        error.message
+        error.message,
       );
       throw error;
     }
@@ -171,7 +171,7 @@ class OSService {
           } catch (logErr) {
             console.error(
               `⚠️ Erro ao logar progressão OS #${os.numeroOS}:`,
-              logErr.message
+              logErr.message,
             );
           }
 
@@ -193,7 +193,7 @@ class OSService {
         console.log(
           `📅 Próxima execução de "${
             servico.nome
-          }": ${novaProxima.toLocaleDateString("pt-BR")}`
+          }": ${novaProxima.toLocaleDateString("pt-BR")}`,
         );
       } catch (err) {
         console.error(`❌ Erro ao processar "${servico.nome}":`, err.message);
@@ -305,11 +305,11 @@ class OSService {
         Setor.find({}, "nome").sort({ nome: 1 }),
         User.find(
           { funcoes: { $in: ["SOLICITANTE", "ADMIN"] }, ativo: true },
-          "nome"
+          "nome",
         ).sort({ nome: 1 }),
         User.find(
           { funcoes: { $in: ["EXECUTOR", "ADMIN"] }, ativo: true },
-          "nome"
+          "nome",
         ).sort({ nome: 1 }),
         Prioridade.find({}, "nome").sort({ nome: 1 }),
       ]);
@@ -370,7 +370,7 @@ class OSService {
         osParaAtualizar.tipo === "PREVENTIVA"
       ) {
         throw new Error(
-          "OS Preventiva não pode ser movida manualmente para EM PROCESSO. Isso é feito automaticamente pelo sistema."
+          "OS Preventiva não pode ser movida manualmente para EM PROCESSO. Isso é feito automaticamente pelo sistema.",
         );
       }
       if (dados.situacao === "EM PROCESSO") {
@@ -405,7 +405,7 @@ class OSService {
       const osAtualizada = await OrdemServico.findByIdAndUpdate(
         id,
         { $set: camposParaAtualizar },
-        { returnDocument: "after", runValidators: true }
+        { returnDocument: "after", runValidators: true },
       );
 
       const solicitanteDoc = await User.findOne({
@@ -494,10 +494,10 @@ class OSService {
             ? "Externa (Terceirizado)"
             : "Interna";
         const dataAberturaFormatada = new Date(
-          osAtualizada.dataAbertura
+          osAtualizada.dataAbertura,
         ).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
         const horaAberturaFormatada = new Date(
-          osAtualizada.dataAbertura
+          osAtualizada.dataAbertura,
         ).toLocaleTimeString("pt-BR", {
           hour: "2-digit",
           minute: "2-digit",
@@ -515,8 +515,8 @@ class OSService {
                 horasRest > 0 ? ` e ${horasRest}h` : ""
               }`
             : diffHoras > 0
-            ? `${diffHoras}h`
-            : "menos de 1h";
+              ? `${diffHoras}h`
+              : "menos de 1h";
 
         const msgFinalizada =
           `✅ *ORDEM DE SERVIÇO FINALIZADA - #${osAtualizada.numeroOS}* ✅\n\n` +
@@ -553,7 +553,7 @@ class OSService {
       } catch (logError) {
         console.error(
           "⚠️ Falha ao salvar log (OS foi atualizada mesmo assim):",
-          logError.message
+          logError.message,
         );
       }
 
@@ -637,11 +637,11 @@ class OSService {
           if (item.situacao === "EM ABERTO" && item.periodicidadeDias) {
             const dataProcesso = new Date(item.dataAbertura);
             dataProcesso.setDate(
-              dataProcesso.getDate() + item.periodicidadeDias
+              dataProcesso.getDate() + item.periodicidadeDias,
             );
             dataProcesso.setHours(0, 0, 0, 0);
             item.diasParaProcesso = Math.ceil(
-              (dataProcesso - agora) / (1000 * 60 * 60 * 24)
+              (dataProcesso - agora) / (1000 * 60 * 60 * 24),
             );
           } else {
             item.diasParaProcesso = null;
@@ -649,14 +649,14 @@ class OSService {
 
           if (
             ["EM ABERTO", "EM PROCESSO", "PRONTO PARA FINALIZAÇÃO"].includes(
-              item.situacao
+              item.situacao,
             )
           ) {
             const prazoAtrasada = new Date(item.dataAbertura);
             prazoAtrasada.setDate(
               prazoAtrasada.getDate() +
                 (item.periodicidadeDias || 0) +
-                (item.tempoExecucao || 1)
+                (item.tempoExecucao || 1),
             );
             prazoAtrasada.setHours(0, 0, 0, 0);
             item.atrasada = prazoAtrasada < agora;
@@ -708,7 +708,7 @@ class OSService {
       } catch (logError) {
         console.error(
           "⚠️ Erro ao registrar log de exclusão:",
-          logError.message
+          logError.message,
         );
       }
 
@@ -722,17 +722,16 @@ class OSService {
   async updateGeneric(id, dados, usuarioNome = "Sistema") {
     try {
       const osAntiga = await OrdemServico.findById(id);
+      if (!osAntiga) throw new Error("OS não encontrada.");
       if (dados.situacao === "EM PROCESSO" && osAntiga.tipo === "PREVENTIVA") {
         throw new Error(
-          "OS Preventiva não pode ser movida manualmente para EM PROCESSO."
+          "OS Preventiva não pode ser movida manualmente para EM PROCESSO.",
         );
       }
-      if (!osAntiga) throw new Error("OS não encontrada.");
-
       const atualizado = await OrdemServico.findByIdAndUpdate(
         id,
         { $set: dados },
-        { returnDocument: "after", runValidators: true }
+        { returnDocument: "after", runValidators: true },
       );
 
       try {
@@ -743,7 +742,7 @@ class OSService {
           const valorNovo = dados[campo];
           if (valorAntigo !== valorNovo) {
             detalhesArray.push(
-              `${campo}: "${valorAntigo || "Vazio"}" ➔ "${valorNovo}"`
+              `${campo}: "${valorAntigo || "Vazio"}" ➔ "${valorNovo}"`,
             );
           }
         });
@@ -779,7 +778,7 @@ class OSService {
     if (error.errors) {
       console.error(
         "Erros de Validação (Mongoose):",
-        JSON.stringify(error.errors, null, 2)
+        JSON.stringify(error.errors, null, 2),
       );
     }
     if (error.stack) {
@@ -800,7 +799,7 @@ class OSService {
             valorMaoDeObra: Number(valorMaoDeObra),
           },
         },
-        { new: true }
+        { new: true },
       );
 
       if (!atualizado) throw new Error("Ordem de Serviço não encontrada.");

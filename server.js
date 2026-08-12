@@ -17,16 +17,17 @@ app.use("/api", routes);
 
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => {
+  .then(async () => {
     console.log("✅ Banco EasyIce Conectado!");
-
+    console.log("🔄 Processando preventivas ao iniciar servidor...");
+    await osService.processarServicosFrequentes().catch(console.error);
     cron.schedule(
       "0 7 * * 1-5",
       async () => {
         console.log("⏰ Cron: verificando serviços preventivos...");
         await osService.processarServicosFrequentes();
       },
-      { timezone: "America/Sao_Paulo" }
+      { timezone: "America/Sao_Paulo" },
     );
 
     console.log("✅ Cron de preventivas agendado (seg-sex às 07h)");
