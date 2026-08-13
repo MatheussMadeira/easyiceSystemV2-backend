@@ -86,14 +86,17 @@ class OSService {
 
       const agora = new Date();
       const texto =
-        `🔄 *NOVA OS PREVENTIVA - #${novaOS.numeroOS}* 🔄\n\n` +
+        `� *AVISO DE MANUTENÇÃO PREVENTIVA - #${novaOS.numeroOS}* 📣\n\n` +
         `📋 *SERVIÇO:* ${servico.nome}\n` +
         `📍 *SETOR:* ${novaOS.setor}\n` +
         `⚙️ *EQUIPAMENTO:* ${novaOS.equipamento}\n` +
         `🛠️ *EXECUTOR:* ${novaOS.executor}\n` +
-        `📅 *DATA:* ${agora.toLocaleDateString("pt-BR")}\n` +
+        `📅 *AVISO:* esta os é apenas informativa e deve ser executada em ${servico.periodicidadeDias} dias.\n` +
         `🔁 *PERIODICIDADE:* A cada ${servico.periodicidadeDias} dias\n` +
-        `⏱️ *TEMPO DE EXECUÇÃO:* ${servico.tempoExecucao || 1} dia(s)`;
+        `⏱️ *TEMPO DE EXECUÇÃO:* ${servico.tempoExecucao || 1} dia(s)\n\n` +
+        `👉 *Próxima execução agendada para:* ${new Date(
+          agora.getTime() + (servico.periodicidadeDias || 0) * 24 * 60 * 60 * 1000,
+        ).toLocaleDateString("pt-BR")}`;
 
       enviarZapGroup(process.env.ZAPI_GROUP_ABERTURA, texto);
 
@@ -248,7 +251,7 @@ class OSService {
 
       const texto =
         novaOS.tipo === "PREVENTIVA"
-          ? `🔄 *NOVA OS PREVENTIVA - #${novaOS.numeroOS}* 🔄\n\n` +
+          ? `� *AVISO DE MANUTENÇÃO PREVENTIVA - #${novaOS.numeroOS}* 📣\n\n` +
             `📋 *SERVIÇO:* ${dados.nomeServico || "Manutenção Preventiva"}\n` +
             `🔥 *PRIORIDADE:* ${prioridadeCurta}\n` +
             `----------------------------------\n` +
@@ -259,6 +262,7 @@ class OSService {
             `📝 *DESCRIÇÃO:* \n${novaOS.descricaoAbertura}\n` +
             `----------------------------------\n` +
             `🔁 *PERIODICIDADE:* A cada ${dados.periodicidadeDias} dias\n` +
+            `📅 *AVISO:* Esta OS serve apenas como alerta. A execução deve acontecer somente daqui ${dados.periodicidadeDias} dias.\n` +
             `📅 *DATA:* ${dataFormatada} às ${horaFormatada}`
           : `🚨 *NOVA ORDEM DE SERVIÇO - #${novaOS.numeroOS}* 🚨\n\n` +
             `🔥 *PRIORIDADE:* ${prioridadeCurta}\n` +
@@ -273,11 +277,17 @@ class OSService {
             `\n\n` +
             `📅 *DATA:* ${dataFormatada} às ${horaFormatada}`;
 
-      enviarZapGroup(process.env.ZAPI_GROUP_ABERTURA, texto);
-
-      const executorDoc = await User.findOne({ nome: novaOS.executor });
-      if (executorDoc?.whatsapp) {
-        enviarZap(executorDoc.whatsapp, texto);
+      if (novaOS.tipo !== "PREVENTIVA") {
+        enviarZapGroup(process.env.ZAPI_GROUP_ABERTURA, texto);
+        const executorDoc = await User.findOne({ nome: novaOS.executor });
+        if (executorDoc?.whatsapp) {
+          enviarZap(executorDoc.whatsapp, texto);
+        }
+      } else {
+        const executorDoc = await User.findOne({ nome: novaOS.executor });
+        if (executorDoc?.whatsapp) {
+          enviarZap(executorDoc.whatsapp, texto);
+        }
       }
 
       try {
