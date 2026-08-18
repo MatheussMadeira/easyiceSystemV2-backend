@@ -18,6 +18,15 @@ class OSService {
     return d;
   }
 
+  /** Dias corridos entre duas datas, ignorando horário. Mínimo de 1. */
+  _diasEntre(origem, alvo) {
+    const a = new Date(origem);
+    a.setHours(0, 0, 0, 0);
+    const b = new Date(alvo);
+    b.setHours(0, 0, 0, 0);
+    return Math.max(1, Math.round((b - a) / (1000 * 60 * 60 * 24)));
+  }
+
   _diasUteisAte(dataAlvo) {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
@@ -63,9 +72,22 @@ class OSService {
     }
   }
 
-  async criarOSAutomatica(servico) {
+  async criarOSAutomatica(
+    servico,
+    { notificar = true, alinharProximaExecucao = false } = {},
+  ) {
     try {
       const numeroOS = await this.getNextNumber();
+
+      // O cron cria a OS no mesmo momento em que reinicia o ciclo, então
+      // dataAbertura + periodicidadeDias cai exatamente na próxima execução.
+      // Na geração manual o agendamento não se move, então a OS precisa guardar
+      // os dias que faltam até a proximaExecucao — senão ela entraria em
+      // processo depois da data real.
+      const periodicidadeOS =
+        alinharProximaExecucao && servico.proximaExecucao
+          ? this._diasEntre(new Date(), servico.proximaExecucao)
+          : servico.periodicidadeDias;
 
       const novaOS = await new OrdemServico({
         numeroOS,
@@ -80,7 +102,7 @@ class OSService {
           servico.descricao || `Manutenção preventiva: ${servico.nome}`,
         tipo: "PREVENTIVA",
         servicoFrequenteId: servico._id,
-        periodicidadeDias: servico.periodicidadeDias,
+        periodicidadeDias: periodicidadeOS,
         tempoExecucao: servico.tempoExecucao || 1,
       }).save();
 
@@ -91,25 +113,29 @@ class OSService {
         `📍 *SETOR:* ${novaOS.setor}\n` +
         `⚙️ *EQUIPAMENTO:* ${novaOS.equipamento}\n` +
         `🛠️ *EXECUTOR:* ${novaOS.executor}\n` +
-        `📅 *AVISO:* esta os é apenas informativa e deve ser executada em ${servico.periodicidadeDias} dias.\n` +
+        `📅 *AVISO:* esta os é apenas informativa e deve ser executada em ${periodicidadeOS} dias.\n` +
         `🔁 *PERIODICIDADE:* A cada ${servico.periodicidadeDias} dias\n` +
         `⏱️ *TEMPO DE EXECUÇÃO:* ${servico.tempoExecucao || 1} dia(s)\n\n` +
         `👉 *Próxima execução agendada para:* ${new Date(
           agora.getTime() + (servico.periodicidadeDias || 0) * 24 * 60 * 60 * 1000,
         ).toLocaleDateString("pt-BR")}`;
 
-      enviarZapGroup(process.env.ZAPI_GROUP_ABERTURA, texto);
+      if (notificar) {
+        enviarZapGroup(process.env.ZAPI_GROUP_ABERTURA, texto);
 
-      const executorDoc = await User.findOne({ nome: novaOS.executor });
-      if (executorDoc?.whatsapp) {
-        enviarZap(executorDoc.whatsapp, texto);
+        const executorDoc = await User.findOne({ nome: novaOS.executor });
+        if (executorDoc?.whatsapp) {
+          enviarZap(executorDoc.whatsapp, texto);
+        }
       }
 
       await Log.create({
         usuario: "Sistema",
         acao: "CRIAÇÃO AUTOMÁTICA",
         entidade: "OS",
-        detalhes: `OS preventiva #${novaOS.numeroOS} criada automaticamente pelo serviço "${servico.nome}".`,
+        detalhes: `OS preventiva #${novaOS.numeroOS} criada automaticamente pelo serviço "${
+          servico.nome
+        }".${notificar ? "" : " (regeração manual, sem notificação WhatsApp)"}`,
         registroId: novaOS._id,
       });
 
@@ -122,6 +148,118 @@ class OSService {
         `❌ Erro ao criar OS automática para ${servico.nome}:`,
         error.message,
       );
+      throw error;
+    }
+  }
+
+  /**
+   * Propaga periodicidadeDias / tempoExecucao do serviço frequente para as OS
+   * já criadas por ele. Sem isso, uma OS aberta antes da edição continua com o
+   * valor antigo e os cálculos de "dias para processo" e "atrasada" ficam errados.
+   * Só mexe em OS pendentes — as CONCLUÍDAS guardam o prazo que valia na época.
+   */
+  async sincronizarOSPendentes(
+    servicoAtualizado,
+    servicoAnterior,
+    usuarioNome = "Sistema",
+  ) {
+    try {
+      const campos = {};
+      const mudancas = [];
+
+      const periodicidadeNova = Number(servicoAtualizado.periodicidadeDias);
+      const periodicidadeAntiga = Number(servicoAnterior.periodicidadeDias);
+      if (periodicidadeNova && periodicidadeNova !== periodicidadeAntiga) {
+        campos.periodicidadeDias = periodicidadeNova;
+        mudancas.push(
+          `periodicidade: ${periodicidadeAntiga} ➔ ${periodicidadeNova} dias`,
+        );
+      }
+
+      const execNovo = Number(servicoAtualizado.tempoExecucao || 1);
+      const execAntigo = Number(servicoAnterior.tempoExecucao || 1);
+      if (execNovo && execNovo !== execAntigo) {
+        campos.tempoExecucao = execNovo;
+        mudancas.push(`tempo de execução: ${execAntigo} ➔ ${execNovo} dia(s)`);
+      }
+
+      if (mudancas.length === 0) return { modificadas: 0, numeros: [] };
+
+      const alvos = await OrdemServico.find({
+        servicoFrequenteId: servicoAtualizado._id,
+        situacao: { $ne: "CONCLUÍDO" },
+      })
+        .sort({ numeroOS: 1 })
+        .lean();
+
+      if (alvos.length === 0) return { modificadas: 0, numeros: [] };
+
+      const operacoes = [];
+      const numeros = [];
+      const aplicados = [];
+
+      for (const os of alvos) {
+        const set = {};
+        if (campos.tempoExecucao) set.tempoExecucao = campos.tempoExecucao;
+
+        if (campos.periodicidadeDias) {
+          // Uma OS EM ABERTO ainda vai virar processo: o que importa nela é
+          // cair na proximaExecucao do serviço, e não o número da recorrência.
+          // Para OS já em andamento o prazo conta da abertura, então vale o
+          // valor cheio.
+          set.periodicidadeDias =
+            os.situacao === "EM ABERTO" && servicoAtualizado.proximaExecucao
+              ? this._diasEntre(os.dataAbertura, servicoAtualizado.proximaExecucao)
+              : campos.periodicidadeDias;
+        }
+
+        if (
+          set.periodicidadeDias === os.periodicidadeDias &&
+          (set.tempoExecucao === undefined ||
+            set.tempoExecucao === os.tempoExecucao)
+        ) {
+          continue;
+        }
+
+        operacoes.push({
+          updateOne: { filter: { _id: os._id }, update: { $set: set } },
+        });
+        numeros.push(os.numeroOS);
+        aplicados.push(
+          `#${os.numeroOS} (${os.periodicidadeDias ?? "—"} ➔ ${
+            set.periodicidadeDias ?? os.periodicidadeDias
+          }d)`,
+        );
+      }
+
+      if (operacoes.length === 0) return { modificadas: 0, numeros: [] };
+
+      await OrdemServico.bulkWrite(operacoes);
+
+      try {
+        await Log.create({
+          usuario: usuarioNome,
+          acao: "EDIÇÃO",
+          entidade: "OS",
+          detalhes:
+            `Serviço "${servicoAtualizado.nome.trim()}" alterado (${mudancas.join(
+              " | ",
+            )}). ` +
+            `Prazo recalculado nas OS pendentes: ${aplicados.join(", ")}.`,
+        });
+      } catch (logErr) {
+        console.error("⚠️ Erro ao logar sincronização:", logErr.message);
+      }
+
+      console.log(
+        `🔄 ${numeros.length} OS sincronizada(s) com "${servicoAtualizado.nome.trim()}": ${mudancas.join(
+          " | ",
+        )}`,
+      );
+
+      return { modificadas: numeros.length, numeros };
+    } catch (error) {
+      console.error("❌ Erro ao sincronizar OS pendentes:", error.message);
       throw error;
     }
   }
@@ -697,12 +835,28 @@ class OSService {
     }
   }
 
-  async delete(id, usuarioNome = "Sistema") {
+  async delete(id, usuarioNome = "Sistema", { forcar = false } = {}) {
     try {
       const osParaDeletar = await OrdemServico.findById(id);
 
       if (!osParaDeletar) {
         throw new Error("Ordem de Serviço não encontrada.");
+      }
+
+      // Apagar uma preventiva pendente deixa o serviço frequente sem OS até o
+      // próximo ciclo (o cron já avançou proximaExecucao), então exige confirmação.
+      if (
+        osParaDeletar.tipo === "PREVENTIVA" &&
+        osParaDeletar.situacao !== "CONCLUÍDO" &&
+        !forcar
+      ) {
+        const erro = new Error(
+          `A OS #${osParaDeletar.numeroOS} é uma preventiva ainda "${osParaDeletar.situacao}". ` +
+            `Se apagar, o serviço recorrente fica sem OS até a próxima execução agendada. ` +
+            `Prefira concluí-la ou desabilitar o serviço na tela de Gerência de Preventivas.`
+        );
+        erro.code = "PREVENTIVA_PENDENTE";
+        throw erro;
       }
 
       await OrdemServico.findByIdAndDelete(id);
@@ -712,7 +866,12 @@ class OSService {
           usuario: usuarioNome,
           acao: "EXCLUSÃO",
           entidade: "OS",
-          detalhes: `APAGOU a OS #${osParaDeletar.numeroOS} (Solicitante: ${osParaDeletar.solicitante}).`,
+          detalhes:
+            `APAGOU a OS #${osParaDeletar.numeroOS} (Solicitante: ${osParaDeletar.solicitante}).` +
+            (osParaDeletar.tipo === "PREVENTIVA" &&
+            osParaDeletar.situacao !== "CONCLUÍDO"
+              ? ` ⚠️ Preventiva pendente apagada com confirmação — use "Gerar OS agora" para regerar.`
+              : ""),
           registroId: id,
         });
       } catch (logError) {
@@ -724,7 +883,9 @@ class OSService {
 
       return { mensagem: "OS removida com sucesso" };
     } catch (error) {
-      this.logDetailedError("DELETE", error);
+      if (error.code !== "PREVENTIVA_PENDENTE") {
+        this.logDetailedError("DELETE", error);
+      }
       throw error;
     }
   }

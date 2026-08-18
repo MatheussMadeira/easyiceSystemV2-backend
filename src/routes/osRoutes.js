@@ -1,6 +1,7 @@
 const express = require("express");
 const osRoutes = express.Router();
 const osController = require("../controllers/osController");
+const osService = require("../services/osService");
 const upload = require("../config/multer");
 const permitir = require("../auth/authMiddleware");
 const ServicoFrequente = require("../models/ServicoFrequente");
@@ -21,15 +22,18 @@ osRoutes.get("/preventivas", permitir(["ADMIN"]), async (req, res) => {
 osRoutes.put("/preventivas/:id", permitir(["ADMIN"]), async (req, res) => {
   try {
     const dados = req.body;
+
+    const sf = await ServicoFrequente.findById(req.params.id);
+    if (!sf) {
+      return res.status(404).json({ erro: "Serviço frequente não encontrado." });
+    }
+
     if (dados.periodicidadeDias) {
-      const sf = await ServicoFrequente.findById(req.params.id);
-      if (sf) {
-        const novaProxima = new Date(sf.ultimaExecucao || new Date());
-        novaProxima.setDate(
-          novaProxima.getDate() + Number(dados.periodicidadeDias)
-        );
-        dados.proximaExecucao = novaProxima;
-      }
+      const novaProxima = new Date(sf.ultimaExecucao || new Date());
+      novaProxima.setDate(
+        novaProxima.getDate() + Number(dados.periodicidadeDias)
+      );
+      dados.proximaExecucao = novaProxima;
     }
 
     const atualizado = await ServicoFrequente.findByIdAndUpdate(
@@ -38,8 +42,17 @@ osRoutes.put("/preventivas/:id", permitir(["ADMIN"]), async (req, res) => {
       { new: true }
     );
 
-    res.json(atualizado);
+    // Replica a nova periodicidade / tempo de execução nas OS já abertas por
+    // este serviço, senão elas seguem calculando prazo pelo valor antigo.
+    const sincronizacao = await osService.sincronizarOSPendentes(
+      atualizado,
+      sf,
+      req.usuario?.nome || "Sistema"
+    );
+
+    res.json({ ...atualizado.toObject(), sincronizacao });
   } catch (err) {
+    console.error("❌ Erro ao atualizar preventiva:", err.message);
     res.status(500).json({ erro: err.message });
   }
 });
@@ -59,9 +72,25 @@ osRoutes.post(
   "/preventivas/:id/executar",
   permitir(["ADMIN"]),
   async (req, res) => {
-    const sf = await ServicoFrequente.findById(req.params.id);
-    const os = await osService.criarOSAutomatica(sf);
-    res.json(os);
+    try {
+      const sf = await ServicoFrequente.findById(req.params.id);
+      if (!sf) {
+        return res.status(404).json({ erro: "Serviço frequente não encontrado." });
+      }
+
+      // Geração manual não dispara WhatsApp por padrão — é usada para corrigir
+      // OS apagadas por engano. Envie { notificar: true } para avisar o executor.
+      const notificar = req.body?.notificar === true;
+
+      const os = await osService.criarOSAutomatica(sf, {
+        notificar,
+        alinharProximaExecucao: true,
+      });
+      return res.status(201).json(os);
+    } catch (err) {
+      console.error("❌ Erro ao gerar OS manual:", err.message);
+      return res.status(500).json({ erro: err.message });
+    }
   }
 );
 osRoutes.post(

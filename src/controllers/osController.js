@@ -109,11 +109,15 @@ class OSController {
     try {
       const { id } = req.params;
       const usuarioLogado = req.usuario?.nome || "Sistema";
+      const forcar = req.query.forcar === "true";
 
-      await osService.delete(id, usuarioLogado);
+      await osService.delete(id, usuarioLogado, { forcar });
 
       return res.status(200).json({ mensagem: "Removido com sucesso" });
     } catch (error) {
+      if (error.code === "PREVENTIVA_PENDENTE") {
+        return res.status(409).json({ erro: error.message, podeForcar: true });
+      }
       return res.status(500).json({ erro: error.message });
     }
   }
