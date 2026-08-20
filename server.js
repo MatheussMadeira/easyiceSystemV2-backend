@@ -32,7 +32,10 @@ mongoose
 
     console.log("✅ Cron de preventivas agendado (seg-sex às 07h)");
   })
-  .catch((err) => console.error("❌ Erro no Banco:", err));
+  .catch((err) => {
+    console.error("❌ Erro no Banco:", err);
+    process.exit(1);
+  });
 
 app.use((err, req, res, next) => {
   console.error("======= 🔥 DETALHE DO ERRO GLOBAL =======");
@@ -42,7 +45,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-const PORT = 3001;
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor V2 rodando em http://localhost:${PORT}`);
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Servidor V2 rodando na porta ${PORT}`);
 });
