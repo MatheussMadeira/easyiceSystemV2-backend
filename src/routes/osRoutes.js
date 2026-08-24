@@ -29,11 +29,10 @@ osRoutes.put("/preventivas/:id", permitir(["ADMIN"]), async (req, res) => {
     }
 
     if (dados.periodicidadeDias) {
-      const novaProxima = new Date(sf.ultimaExecucao || new Date());
-      novaProxima.setDate(
-        novaProxima.getDate() + Number(dados.periodicidadeDias)
+      dados.proximaExecucao = osService._agendarProximaExecucao(
+        sf.ultimaExecucao || new Date(),
+        dados.periodicidadeDias
       );
-      dados.proximaExecucao = novaProxima;
     }
 
     const atualizado = await ServicoFrequente.findByIdAndUpdate(

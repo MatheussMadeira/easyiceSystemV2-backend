@@ -22,7 +22,7 @@ mongoose
     console.log("🔄 Processando preventivas ao iniciar servidor...");
     await osService.processarServicosFrequentes().catch(console.error);
     cron.schedule(
-      "0 7 * * 1-5",
+      "0 7 * * *",
       async () => {
         console.log("⏰ Cron: verificando serviços preventivos...");
         await osService.processarServicosFrequentes();
@@ -30,7 +30,7 @@ mongoose
       { timezone: "America/Sao_Paulo" },
     );
 
-    console.log("✅ Cron de preventivas agendado (seg-sex às 07h)");
+    console.log("✅ Cron de preventivas agendado (todos os dias às 07h)");
   })
   .catch((err) => {
     console.error("❌ Erro no Banco:", err);

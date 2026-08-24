@@ -18,6 +18,23 @@ class OSService {
     return d;
   }
 
+  /**
+   * Instante em que a próxima OS deve ser gerada: sempre 00:00 no horário de
+   * Brasília. O cron roda às 07:00 BRT, então um vencimento com hora do dia
+   * faria o serviço perder o dia inteiro. A data é respeitada como está —
+   * inclusive sábado e domingo, que são intencionais em alguns serviços.
+   * Usa apenas métodos UTC para não depender do fuso do processo.
+   */
+  _agendarProximaExecucao(base, dias) {
+    const OFFSET_BRT = 3 * 60 * 60 * 1000;
+
+    const d = new Date(new Date(base).getTime() - OFFSET_BRT);
+    d.setUTCHours(0, 0, 0, 0);
+    d.setUTCDate(d.getUTCDate() + Number(dias || 0));
+
+    return new Date(d.getTime() + OFFSET_BRT);
+  }
+
   /** Dias corridos entre duas datas, ignorando horário. Mínimo de 1. */
   _diasEntre(origem, alvo) {
     const a = new Date(origem);
@@ -321,10 +338,10 @@ class OSService {
 
         await this.criarOSAutomatica(servico);
 
-        const novaProxima = new Date();
-        novaProxima.setDate(novaProxima.getDate() + servico.periodicidadeDias);
-        novaProxima.setHours(0, 0, 0, 0);
-        const novaProximaAjustada = this._proximoDiaUtil(novaProxima);
+        const novaProximaAjustada = this._agendarProximaExecucao(
+          new Date(),
+          servico.periodicidadeDias,
+        );
 
         await ServicoFrequente.findByIdAndUpdate(servico._id, {
           ultimaExecucao: new Date(),
@@ -334,7 +351,9 @@ class OSService {
         console.log(
           `📅 Próxima execução de "${
             servico.nome
-          }": ${novaProxima.toLocaleDateString("pt-BR")}`,
+          }": ${novaProximaAjustada.toLocaleDateString("pt-BR", {
+            timeZone: "America/Sao_Paulo",
+          })}`,
         );
       } catch (err) {
         console.error(`❌ Erro ao processar "${servico.nome}":`, err.message);
