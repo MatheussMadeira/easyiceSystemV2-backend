@@ -89,22 +89,9 @@ class OSService {
     }
   }
 
-  async criarOSAutomatica(
-    servico,
-    { notificar = true, alinharProximaExecucao = false } = {},
-  ) {
+  async criarOSAutomatica(servico, { notificar = true } = {}) {
     try {
       const numeroOS = await this.getNextNumber();
-
-      // O cron cria a OS no mesmo momento em que reinicia o ciclo, então
-      // dataAbertura + periodicidadeDias cai exatamente na próxima execução.
-      // Na geração manual o agendamento não se move, então a OS precisa guardar
-      // os dias que faltam até a proximaExecucao — senão ela entraria em
-      // processo depois da data real.
-      const periodicidadeOS =
-        alinharProximaExecucao && servico.proximaExecucao
-          ? this._diasEntre(new Date(), servico.proximaExecucao)
-          : servico.periodicidadeDias;
 
       const novaOS = await new OrdemServico({
         numeroOS,
@@ -119,23 +106,19 @@ class OSService {
           servico.descricao || `Manutenção preventiva: ${servico.nome}`,
         tipo: "PREVENTIVA",
         servicoFrequenteId: servico._id,
-        periodicidadeDias: periodicidadeOS,
+        periodicidadeDias: servico.periodicidadeDias,
         tempoExecucao: servico.tempoExecucao || 1,
       }).save();
 
-      const agora = new Date();
       const texto =
-        `� *AVISO DE MANUTENÇÃO PREVENTIVA - #${novaOS.numeroOS}* 📣\n\n` +
+        `📣 *MANUTENÇÃO PREVENTIVA - #${novaOS.numeroOS}* 📣\n\n` +
         `📋 *SERVIÇO:* ${servico.nome}\n` +
         `📍 *SETOR:* ${novaOS.setor}\n` +
         `⚙️ *EQUIPAMENTO:* ${novaOS.equipamento}\n` +
         `🛠️ *EXECUTOR:* ${novaOS.executor}\n` +
-        `📅 *AVISO:* esta os é apenas informativa e deve ser executada em ${periodicidadeOS} dias.\n` +
+        `📅 *AVISO:* esta OS deve ser executada e finalizada HOJE.\n` +
         `🔁 *PERIODICIDADE:* A cada ${servico.periodicidadeDias} dias\n` +
-        `⏱️ *TEMPO DE EXECUÇÃO:* ${servico.tempoExecucao || 1} dia(s)\n\n` +
-        `👉 *Próxima execução agendada para:* ${new Date(
-          agora.getTime() + (servico.periodicidadeDias || 0) * 24 * 60 * 60 * 1000,
-        ).toLocaleDateString("pt-BR")}`;
+        `⏱️ *TEMPO DE EXECUÇÃO:* ${servico.tempoExecucao || 1} dia(s)`;
 
       if (notificar) {
         enviarZapGroup(process.env.ZAPI_GROUP_ABERTURA, texto);
@@ -172,7 +155,7 @@ class OSService {
   /**
    * Propaga periodicidadeDias / tempoExecucao do serviço frequente para as OS
    * já criadas por ele. Sem isso, uma OS aberta antes da edição continua com o
-   * valor antigo e os cálculos de "dias para processo" e "atrasada" ficam errados.
+   * valor antigo e o cálculo de "atrasada" (que usa tempoExecucao) fica errado.
    * Só mexe em OS pendentes — as CONCLUÍDAS guardam o prazo que valia na época.
    */
   async sincronizarOSPendentes(
@@ -220,14 +203,7 @@ class OSService {
         if (campos.tempoExecucao) set.tempoExecucao = campos.tempoExecucao;
 
         if (campos.periodicidadeDias) {
-          // Uma OS EM ABERTO ainda vai virar processo: o que importa nela é
-          // cair na proximaExecucao do serviço, e não o número da recorrência.
-          // Para OS já em andamento o prazo conta da abertura, então vale o
-          // valor cheio.
-          set.periodicidadeDias =
-            os.situacao === "EM ABERTO" && servicoAtualizado.proximaExecucao
-              ? this._diasEntre(os.dataAbertura, servicoAtualizado.proximaExecucao)
-              : campos.periodicidadeDias;
+          set.periodicidadeDias = campos.periodicidadeDias;
         }
 
         if (
@@ -291,51 +267,10 @@ class OSService {
 
     for (const servico of servicos) {
       try {
-        const osEmAberto = await OrdemServico.find({
-          servicoFrequenteId: servico._id,
-          situacao: "EM ABERTO",
-        });
-
-        for (const os of osEmAberto) {
-          await OrdemServico.findByIdAndUpdate(os._id, {
-            $set: { situacao: "EM PROCESSO" },
-          });
-
-          const msgExecucao =
-            `🔔 *HORA DE EXECUTAR - OS #${os.numeroOS}* 🔔\n\n` +
-            `📋 *SERVIÇO:* ${servico.nome}\n` +
-            `📍 *SETOR:* ${os.setor}\n` +
-            `⚙️ *EQUIPAMENTO:* ${os.equipamento}\n` +
-            `----------------------------------\n` +
-            `👉 A periodicidade de ${servico.periodicidadeDias} dias foi atingida.\n` +
-            `⏱️ Você tem ${
-              servico.tempoExecucao || 1
-            } dia(s) para executar e finalizar.\n\n` +
-            `📅 *DATA:* ${agora.toLocaleDateString("pt-BR")}`;
-
-          const executorDoc = await User.findOne({ nome: os.executor });
-          if (executorDoc?.whatsapp) {
-            enviarZap(executorDoc.whatsapp, msgExecucao);
-          }
-
-          try {
-            await Log.create({
-              usuario: "Sistema",
-              acao: "AUTO PROGRESSÃO",
-              entidade: "OS",
-              detalhes: `OS #${os.numeroOS} movida automaticamente para EM PROCESSO pelo serviço "${servico.nome}".`,
-              registroId: os._id,
-            });
-          } catch (logErr) {
-            console.error(
-              `⚠️ Erro ao logar progressão OS #${os.numeroOS}:`,
-              logErr.message,
-            );
-          }
-
-          console.log(`⚡ OS #${os.numeroOS} → EM PROCESSO (automático)`);
-        }
-
+        // Preventiva agora só tem EM ABERTO/CONCLUÍDO: a OS nasce no próprio
+        // dia em que deve ser executada e finalizada, sem etapa intermediária
+        // de "promoção" — se a anterior ainda não foi concluída, ela fica
+        // como está (atrasada) e esta nova entra no lugar.
         await this.criarOSAutomatica(servico);
 
         const novaProximaAjustada = this._agendarProximaExecucao(
@@ -419,7 +354,7 @@ class OSService {
             `📝 *DESCRIÇÃO:* \n${novaOS.descricaoAbertura}\n` +
             `----------------------------------\n` +
             `🔁 *PERIODICIDADE:* A cada ${dados.periodicidadeDias} dias\n` +
-            `📅 *AVISO:* Esta OS serve apenas como alerta. A execução deve acontecer somente daqui ${dados.periodicidadeDias} dias.\n` +
+            `📅 *AVISO:* Esta OS deve ser executada e finalizada HOJE.\n` +
             `📅 *DATA:* ${dataFormatada} às ${horaFormatada}`
           : `🚨 *NOVA ORDEM DE SERVIÇO - #${novaOS.numeroOS}* 🚨\n\n` +
             `🔥 *PRIORIDADE:* ${prioridadeCurta}\n` +
@@ -533,11 +468,12 @@ class OSService {
         logMensagem = `Alterou status da OS #${osParaAtualizar.numeroOS} de "${osParaAtualizar.situacao}" para "${dados.situacao}".`;
       }
       if (
-        dados.situacao === "EM PROCESSO" &&
-        osParaAtualizar.tipo === "PREVENTIVA"
+        osParaAtualizar.tipo === "PREVENTIVA" &&
+        dados.situacao &&
+        !["EM ABERTO", "CONCLUÍDO"].includes(dados.situacao)
       ) {
         throw new Error(
-          "OS Preventiva não pode ser movida manualmente para EM PROCESSO. Isso é feito automaticamente pelo sistema.",
+          `OS Preventiva só pode estar EM ABERTO ou CONCLUÍDO — "${dados.situacao}" não é permitido para este tipo.`,
         );
       }
       if (dados.situacao === "EM PROCESSO") {
@@ -798,41 +734,19 @@ class OSService {
       agora.setHours(0, 0, 0, 0);
 
       return os.map((item) => {
-        if (item.tipo === "PREVENTIVA") {
-          const abertura = new Date(item.dataAbertura);
-          abertura.setHours(0, 0, 0, 0);
-          if (item.situacao === "EM ABERTO" && item.periodicidadeDias) {
-            const dataProcesso = new Date(item.dataAbertura);
-            dataProcesso.setDate(
-              dataProcesso.getDate() + item.periodicidadeDias,
-            );
-            dataProcesso.setHours(0, 0, 0, 0);
-            item.diasParaProcesso = Math.ceil(
-              (dataProcesso - agora) / (1000 * 60 * 60 * 24),
-            );
-          } else {
-            item.diasParaProcesso = null;
-          }
+        // diasParaProcesso não existe mais: a preventiva já nasce no dia em
+        // que deve ser executada (EM ABERTO), sem etapa de "aviso antecipado".
+        item.diasParaProcesso = null;
 
-          if (
-            ["EM ABERTO", "EM PROCESSO", "PRONTO PARA FINALIZAÇÃO"].includes(
-              item.situacao,
-            )
-          ) {
-            const prazoAtrasada = new Date(item.dataAbertura);
-            prazoAtrasada.setDate(
-              prazoAtrasada.getDate() +
-                (item.periodicidadeDias || 0) +
-                (item.tempoExecucao || 1),
-            );
-            prazoAtrasada.setHours(0, 0, 0, 0);
-            item.atrasada = prazoAtrasada < agora;
-          } else {
-            item.atrasada = false;
-          }
+        if (item.tipo === "PREVENTIVA" && item.situacao === "EM ABERTO") {
+          const prazoAtrasada = new Date(item.dataAbertura);
+          prazoAtrasada.setDate(
+            prazoAtrasada.getDate() + (item.tempoExecucao || 1),
+          );
+          prazoAtrasada.setHours(0, 0, 0, 0);
+          item.atrasada = prazoAtrasada < agora;
         } else {
           item.atrasada = false;
-          item.diasParaProcesso = null;
         }
 
         return item;
@@ -913,9 +827,13 @@ class OSService {
     try {
       const osAntiga = await OrdemServico.findById(id);
       if (!osAntiga) throw new Error("OS não encontrada.");
-      if (dados.situacao === "EM PROCESSO" && osAntiga.tipo === "PREVENTIVA") {
+      if (
+        osAntiga.tipo === "PREVENTIVA" &&
+        dados.situacao &&
+        !["EM ABERTO", "CONCLUÍDO"].includes(dados.situacao)
+      ) {
         throw new Error(
-          "OS Preventiva não pode ser movida manualmente para EM PROCESSO.",
+          `OS Preventiva só pode estar EM ABERTO ou CONCLUÍDO — "${dados.situacao}" não é permitido para este tipo.`,
         );
       }
       const atualizado = await OrdemServico.findByIdAndUpdate(

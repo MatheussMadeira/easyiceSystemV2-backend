@@ -14,7 +14,7 @@ const uploadFields = upload.fields([
   { name: "arquivoAbertura", maxCount: 1 },
   { name: "arquivoFechamento", maxCount: 1 },
 ]);
-osRoutes.get("/preventivas", permitir(["ADMIN"]), async (req, res) => {
+osRoutes.get("/preventivas", permitir(["SOLICITANTE", "EXECUTOR", "ADMIN"]), async (req, res) => {
   const lista = await ServicoFrequente.find().sort({ proximaExecucao: 1 });
   res.json(lista);
 });
@@ -81,10 +81,7 @@ osRoutes.post(
       // OS apagadas por engano. Envie { notificar: true } para avisar o executor.
       const notificar = req.body?.notificar === true;
 
-      const os = await osService.criarOSAutomatica(sf, {
-        notificar,
-        alinharProximaExecucao: true,
-      });
+      const os = await osService.criarOSAutomatica(sf, { notificar });
       return res.status(201).json(os);
     } catch (err) {
       console.error("❌ Erro ao gerar OS manual:", err.message);
