@@ -19,8 +19,9 @@ mongoose
   .connect(process.env.MONGO_URI)
   .then(async () => {
     console.log("✅ Banco EasyIce Conectado!");
-    console.log("🔄 Processando preventivas ao iniciar servidor...");
-    await osService.processarServicosFrequentes().catch(console.error);
+    // Preventivas só são processadas pelo cron das 07h — nunca ao subir o
+    // servidor, senão um restart/deploy fora do expediente cria e notifica
+    // OS's em qualquer horário (ex.: 20h de uma sexta-feira).
     cron.schedule(
       "0 7 * * *",
       async () => {
