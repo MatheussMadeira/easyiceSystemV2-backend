@@ -4,6 +4,11 @@ const axios = require("axios");
 const enviarZap = async (numero, mensagem) => {
   if (!numero) return;
 
+  if (process.env.DESATIVAR_WHATSAPP === "true") {
+    console.log(`🔇 WhatsApp desativado (DESATIVAR_WHATSAPP=true) — mensagem para ${numero} não foi enviada.`);
+    return;
+  }
+
   let destinatario;
   if (
     numero.includes("-") ||

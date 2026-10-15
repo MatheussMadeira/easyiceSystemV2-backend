@@ -487,10 +487,19 @@ class OSService {
           camposParaAtualizar.motivoRejeicao = dados.motivoRejeicao;
         }
       } else if (dados.situacao === "PRONTO PARA FINALIZAÇÃO") {
+        const diagnostico = (
+          dados.diagnostico ?? osParaAtualizar.diagnostico
+        )?.trim();
+        if (!diagnostico) {
+          throw new Error(
+            "O diagnóstico do problema é obrigatório para mover a OS para PRONTO PARA FINALIZAÇÃO.",
+          );
+        }
         if (!osParaAtualizar.dataParaConcluir) {
           camposParaAtualizar.dataParaConcluir = new Date();
         }
         camposParaAtualizar.descricaoProcesso = dados.descricaoProcesso;
+        camposParaAtualizar.diagnostico = diagnostico;
       } else if (dados.situacao === "CONCLUÍDO") {
         camposParaAtualizar = {
           ...camposParaAtualizar,
@@ -835,6 +844,14 @@ class OSService {
         throw new Error(
           `OS Preventiva só pode estar EM ABERTO ou CONCLUÍDO — "${dados.situacao}" não é permitido para este tipo.`,
         );
+      }
+      if (dados.situacao === "PRONTO PARA FINALIZAÇÃO") {
+        const diagnostico = (dados.diagnostico ?? osAntiga.diagnostico)?.trim();
+        if (!diagnostico) {
+          throw new Error(
+            "O diagnóstico do problema é obrigatório para mover a OS para PRONTO PARA FINALIZAÇÃO.",
+          );
+        }
       }
       const atualizado = await OrdemServico.findByIdAndUpdate(
         id,
